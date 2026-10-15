@@ -1,0 +1,76 @@
+{
+  "name": "vscode-git-panel",
+  "displayName": "Git Panel (IDEA Style)",
+  "description": "IntelliJ IDEA style Git panel for VS Code in bottom panel area with Branch management, Git Graph, and Commit Diff inspection.",
+  "version": "0.1.0",
+  "publisher": "zxl",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "main": "./dist/extension/extension.js",
+  "activationEvents": [
+    "onView:git-panel.view"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "git-panel-container",
+          "title": "Git",
+          "icon": "$(git-commit)"
+        }
+      ]
+    },
+    "views": {
+      "git-panel-container": [
+        {
+          "type": "webview",
+          "id": "git-panel.view",
+          "name": "Git Log"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "git-panel.refresh",
+        "title": "Git Panel: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "git-panel.openInPanel",
+        "title": "Git Panel: Focus Git Panel"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build:extension": "node esbuild.js",
+    "build:webview": "vite build",
+    "build": "npm run build:extension && npm run build:webview",
+    "watch:extension": "node esbuild.js --watch",
+    "watch:webview": "vite build --watch",
+    "compile": "npm run build",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@types/vscode": "^1.85.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "esbuild": "^0.20.2",
+    "lucide-react": "^0.359.0",
+    "postcss": "^8.4.38",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.4.3",
+    "vite": "^5.2.2"
+  }
+}

@@ -1,0 +1,341 @@
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import { GitService } from './GitService';
+import { GitContentProvider } from './GitContentProvider';
+import { ExtensionMessage, GitFileStatus, WebviewMessage } from '../common/types';
+
+export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
+  public static readonly viewType = 'git-panel.view';
+  private _view?: vscode.WebviewView;
+  private _disposables: vscode.Disposable[] = [];
+  private _gitWatcher?: vscode.FileSystemWatcher;
+
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly gitService: GitService
+  ) {}
+
+  public resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    _context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ) {
+    this._view = webviewView;
+
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        this._extensionUri,
+        vscode.Uri.joinPath(this._extensionUri, 'dist'),
+      ],
+    };
+
+    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+
+    webviewView.webview.onDidReceiveMessage(
+      (message: WebviewMessage) => this._handleWebviewMessage(message),
+      undefined,
+      this._disposables
+    );
+
+    // 监控工作区变动
+    this._setupGitWatcher();
+
+    webviewView.onDidDispose(() => {
+      this.dispose();
+    });
+  }
+
+  private _setupGitWatcher() {
+    this._gitWatcher?.dispose();
+    this._gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/{HEAD,refs/heads/**,refs/remotes/**}');
+    
+    const refreshDebounced = this._debounce(() => {
+      this.refreshData();
+    }, 400);
+
+    this._gitWatcher.onDidChange(refreshDebounced);
+    this._gitWatcher.onDidCreate(refreshDebounced);
+    this._gitWatcher.onDidDelete(refreshDebounced);
+  }
+
+  private _debounce(fn: () => void, delay: number) {
+    let timer: NodeJS.Timeout;
+    return () => {
+      clearTimeout(timer);
+      timer = setTimeout(fn, delay);
+    };
+  }
+
+  public postMessage(message: ExtensionMessage) {
+    this._view?.webview.postMessage(message);
+  }
+
+  private async _handleWebviewMessage(msg: WebviewMessage) {
+    try {
+      switch (msg.type) {
+        case 'ready':
+        case 'refresh':
+          await this.refreshData();
+          break;
+
+        case 'switchRepo':
+          this.gitService.setActiveRepoPath(msg.repoPath);
+          await this.refreshData();
+          break;
+
+        case 'selectCommit':
+          await this._loadCommitDetail(msg.commitHash);
+          break;
+
+        case 'openDiff':
+          await this._openDiff(msg.commitHash, msg.filePath, msg.oldPath, msg.status);
+          break;
+
+        case 'checkoutBranch':
+          await this.gitService.checkout(msg.branchName, msg.isRemote);
+          vscode.window.showInformationMessage(`已切换分支到: ${msg.branchName}`);
+          await this.refreshData();
+          break;
+
+        case 'createBranch':
+          await this.gitService.createBranch(msg.branchName, msg.targetHash);
+          vscode.window.showInformationMessage(`成功创建并检出分支: ${msg.branchName}`);
+          await this.refreshData();
+          break;
+
+        case 'deleteBranch':
+          await this.gitService.deleteBranch(msg.branchName, msg.isRemote, msg.force);
+          vscode.window.showInformationMessage(`已删除分支: ${msg.branchName}`);
+          await this.refreshData();
+          break;
+
+        case 'mergeBranch':
+          try {
+            await this.gitService.merge(msg.branchName);
+            vscode.window.showInformationMessage(`成功合并分支: ${msg.branchName}`);
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`合并分支失败: ${err.message}`);
+          }
+          await this.refreshData();
+          break;
+
+        case 'rebaseBranch':
+          try {
+            await this.gitService.rebase(msg.branchName);
+            vscode.window.showInformationMessage(`成功变基到: ${msg.branchName}`);
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`变基失败: ${err.message}`);
+          }
+          await this.refreshData();
+          break;
+
+        case 'pushBranch':
+          try {
+            await this.gitService.push(msg.branchName, msg.remote);
+            vscode.window.showInformationMessage(`推送成功: ${msg.branchName}`);
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`推送失败: ${err.message}`);
+          }
+          await this.refreshData();
+          break;
+
+        case 'cherryPickCommit':
+          try {
+            await this.gitService.cherryPick(msg.commitHash);
+            vscode.window.showInformationMessage(`成功 Cherry-pick 提交: ${msg.commitHash.slice(0, 7)}`);
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`Cherry-pick 失败: ${err.message}`);
+          }
+          await this.refreshData();
+          break;
+
+        case 'resetCommit':
+          try {
+            await this.gitService.reset(msg.commitHash, msg.mode);
+            vscode.window.showInformationMessage(`已重置当前分支到 ${msg.commitHash.slice(0, 7)} (${msg.mode})`);
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`重置失败: ${err.message}`);
+          }
+          await this.refreshData();
+          break;
+
+        case 'revertCommit':
+          try {
+            await this.gitService.revert(msg.commitHash);
+            vscode.window.showInformationMessage(`已撤销提交: ${msg.commitHash.slice(0, 7)}`);
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`撤销失败: ${err.message}`);
+          }
+          await this.refreshData();
+          break;
+
+        case 'filterBranch':
+          try {
+            const commits = await this.gitService.getCommits(600, msg.branch || undefined);
+            this.postMessage({ type: 'commitsUpdate', commits });
+          } catch (err: any) {
+            this.postMessage({ type: 'error', message: `筛选分支失败: ${err.message}` });
+          }
+          break;
+      }
+    } catch (err: any) {
+      this.postMessage({ type: 'error', message: err.message || String(err) });
+    }
+  }
+
+  public async refreshData() {
+    this.postMessage({ type: 'loading', isLoading: true });
+    try {
+      const repos = await this.gitService.scanRepositories();
+      const activePath = this.gitService.getActiveRepoPath();
+      const activeRepo = repos.find((r) => r.path === activePath) || (repos.length > 0 ? repos[0] : null);
+
+      if (!activeRepo) {
+        this.postMessage({
+          type: 'initialState',
+          repos: [],
+          activeRepo: null,
+          branches: [],
+          commits: [],
+          selectedCommitDetail: null,
+        });
+        return;
+      }
+
+      const [branches, commits] = await Promise.all([
+        this.gitService.getBranches(),
+        this.gitService.getCommits(600),
+      ]);
+
+      let selectedCommitDetail = null;
+      if (commits.length > 0) {
+        selectedCommitDetail = await this.gitService.getCommitDetail(commits[0].hash);
+      }
+
+      this.postMessage({
+        type: 'initialState',
+        repos,
+        activeRepo,
+        branches,
+        commits,
+        selectedCommitDetail,
+      });
+    } catch (err: any) {
+      this.postMessage({ type: 'error', message: err.message || '加载 Git 数据失败' });
+    } finally {
+      this.postMessage({ type: 'loading', isLoading: false });
+    }
+  }
+
+  private async _loadCommitDetail(commitHash: string) {
+    try {
+      const detail = await this.gitService.getCommitDetail(commitHash);
+      this.postMessage({ type: 'commitDetails', detail });
+    } catch (err: any) {
+      this.postMessage({ type: 'error', message: `获取提交详情失败: ${err.message}` });
+    }
+  }
+
+  private async _openDiff(
+    commitHash: string,
+    filePath: string,
+    oldPath: string | undefined,
+    status: GitFileStatus
+  ) {
+    try {
+      const detail = await this.gitService.getCommitDetail(commitHash);
+      const parentHash = detail.parents.length > 0 ? detail.parents[0] : 'empty';
+
+      let leftUri: vscode.Uri;
+      let rightUri: vscode.Uri;
+      const fileName = path.basename(filePath);
+
+      if (status === 'A') {
+        // 新增文件：左侧空，右侧为当前 commit
+        leftUri = GitContentProvider.createUri('empty', filePath);
+        rightUri = GitContentProvider.createUri(commitHash, filePath);
+      } else if (status === 'D') {
+        // 删除文件：左侧为 parent，右侧空
+        leftUri = GitContentProvider.createUri(parentHash, filePath);
+        rightUri = GitContentProvider.createUri('empty', filePath);
+      } else {
+        // 修改或重命名
+        const leftFilePath = oldPath || filePath;
+        leftUri = GitContentProvider.createUri(parentHash, leftFilePath);
+        rightUri = GitContentProvider.createUri(commitHash, filePath);
+      }
+
+      const leftLabel = parentHash === 'empty' ? '空' : parentHash.slice(0, 7);
+      const rightLabel = commitHash.slice(0, 7);
+      const title = `${fileName} (${leftLabel} ↔ ${rightLabel})`;
+
+      // 在主编辑区打开 VS Code 内置 Diff 窗口
+      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title, {
+        preview: true,
+        preserveFocus: false,
+      });
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`无法打开差异对比: ${err.message}`);
+    }
+  }
+
+  private _getHtmlForWebview(webview: vscode.Webview): string {
+    const isProd = fs.existsSync(path.join(this._extensionUri.fsPath, 'dist/webview/assets/index.js'));
+
+    let scriptUri: vscode.Uri;
+    let styleUri: vscode.Uri;
+
+    if (isProd) {
+      scriptUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'assets', 'index.js')
+      );
+      styleUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'assets', 'index.css')
+      );
+    } else {
+      // 降级或者开发时尝试载入构建物
+      scriptUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'assets', 'index.js')
+      );
+      styleUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'assets', 'index.css')
+      );
+    }
+
+    const nonce = getNonce();
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource};">
+  <link rel="stylesheet" href="${styleUri}">
+  <title>Git Panel</title>
+</head>
+<body class="bg-vscode-bg text-vscode-fg overflow-hidden select-none m-0 p-0 font-sans text-xs">
+  <div id="root" class="h-screen w-screen overflow-hidden flex flex-col"></div>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
+  }
+
+  public dispose() {
+    this._gitWatcher?.dispose();
+    while (this._disposables.length) {
+      const d = this._disposables.pop();
+      if (d) d.dispose();
+    }
+  }
+}
+
+function getNonce() {
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+}
