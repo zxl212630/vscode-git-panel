@@ -13,7 +13,7 @@ const BRANCH_COLORS = [
   '#2bc48a', // 薄荷绿
 ];
 
-export function computeGraphLayout(commits: GitCommit[]): GraphNode[] {
+export function computeGraphLayout(commits: GitCommit[], baseBranch?: string): GraphNode[] {
   if (commits.length === 0) {
     return [];
   }
@@ -26,6 +26,7 @@ export function computeGraphLayout(commits: GitCommit[]): GraphNode[] {
       hash: string;
       parents: string[];
       subject: string;
+      refs: string[];
       chainId: number;
       lane: number;
     }
@@ -37,6 +38,7 @@ export function computeGraphLayout(commits: GitCommit[]): GraphNode[] {
       hash: c.hash,
       parents: c.parents,
       subject: c.subject,
+      refs: c.refs || [],
       chainId: -1,
       lane: -1,
     });
@@ -101,12 +103,106 @@ export function computeGraphLayout(commits: GitCommit[]): GraphNode[] {
     });
   }
 
-  // 3. 泳道区间分配与复用 (Lane Allocation & Reuse)
-  // 按出现起始行排序，长度大的优先靠左（Lane 0, 1...）
-  chains.sort((a, b) => a.startRow - b.startRow || b.nodes.length - a.nodes.length);
+  // 建立反向引用索引：commitHash -> 引用它的上级 commit 索引列表
+  const referrersMap = new Map<string, number[]>();
+  commits.forEach((c, idx) => {
+    c.parents.forEach((p) => {
+      if (!referrersMap.has(p)) {
+        referrersMap.set(p, []);
+      }
+      referrersMap.get(p)!.push(idx);
+    });
+  });
+
+  // 扩展计算每条骨干链的真实生命周期区间 [startRow, endRow]
+  chains.forEach((ch) => {
+    let minRow = ch.nodes[0].index;
+    let maxRow = ch.nodes[ch.nodes.length - 1].index;
+
+    // 上界：所有在上方引用了本链任意节点的提交行号（提前开辟通道）
+    for (const n of ch.nodes) {
+      const refs = referrersMap.get(n.hash);
+      if (refs) {
+        for (const rRow of refs) {
+          if (rRow < minRow) {
+            minRow = rRow;
+          }
+        }
+      }
+    }
+
+    // 下界：最后一个节点所连向的所有父节点行号
+    const lastNode = ch.nodes[ch.nodes.length - 1];
+    for (const p of lastNode.parents) {
+      if (commitMap.has(p)) {
+        const pRow = commitMap.get(p)!.index;
+        if (pRow > maxRow) {
+          maxRow = pRow;
+        }
+      }
+    }
+
+    ch.startRow = minRow;
+    ch.endRow = maxRow;
+  });
+
+  // 3. 识别主干/基准分支，计算已合并祖先集合 (Base Reachable Commits)
+  let baseCommitHash = commits[0].hash;
+  if (baseBranch) {
+    const branchCommit = commits.find((c) =>
+      c.refs &&
+      c.refs.some(
+        (r) =>
+          r === baseBranch ||
+          r === `origin/${baseBranch}` ||
+          r === `HEAD -> ${baseBranch}` ||
+          r.includes(`/${baseBranch}`)
+      )
+    );
+    if (branchCommit) {
+      baseCommitHash = branchCommit.hash;
+    }
+  } else {
+    const headCommit = commits.find(
+      (c) =>
+        c.refs &&
+        c.refs.some((r) => r.includes('HEAD') || r.includes('master') || r.includes('main'))
+    );
+    if (headCommit) {
+      baseCommitHash = headCommit.hash;
+    }
+  }
+
+  const baseReachable = new Set<string>();
+  const queue: string[] = [baseCommitHash];
+  while (queue.length > 0) {
+    const h = queue.shift()!;
+    if (!baseReachable.has(h)) {
+      baseReachable.add(h);
+      const n = commitMap.get(h);
+      if (n && n.parents) {
+        for (const p of n.parents) {
+          if (!baseReachable.has(p)) {
+            queue.push(p);
+          }
+        }
+      }
+    }
+  }
+
+  // 为每条链判定是否已合并到主干 (isMerged)
+  const chainsWithStatus = chains.map((ch) => {
+    const isMerged = ch.nodes.some((n) => baseReachable.has(n.hash));
+    return { ...ch, isMerged };
+  });
+
+  // 4. 两批泳道区间分配与复用 (Two-Phase Lane Allocation)
+  // 第一批：已合并的链 (isMerged === true) 优先分配在左侧 (Lane 0, 1...)
+  const mergedChains = chainsWithStatus.filter((c) => c.isMerged);
+  mergedChains.sort((a, b) => a.startRow - b.startRow || b.nodes.length - a.nodes.length);
 
   const laneEndRow: number[] = [];
-  for (const ch of chains) {
+  for (const ch of mergedChains) {
     let chosenLane = -1;
     for (let l = 0; l < laneEndRow.length; l++) {
       if (laneEndRow[l] <= ch.startRow) {
@@ -117,6 +213,33 @@ export function computeGraphLayout(commits: GitCommit[]): GraphNode[] {
     if (chosenLane === -1) {
       chosenLane = laneEndRow.length;
       laneEndRow.push(ch.endRow);
+    } else {
+      laneEndRow[chosenLane] = ch.endRow;
+    }
+    ch.lane = chosenLane;
+    ch.nodes.forEach((n) => {
+      n.lane = chosenLane;
+    });
+  }
+
+  // 未合并分支从已合并分支的最大泳道右侧起步，绝不进入已合并分支中间！
+  const minUnmergedLane = laneEndRow.length;
+
+  // 第二批：未合并的链 (isMerged === false) 排在最右侧
+  const unmergedChains = chainsWithStatus.filter((c) => !c.isMerged);
+  unmergedChains.sort((a, b) => a.startRow - b.startRow || b.nodes.length - a.nodes.length);
+
+  for (const ch of unmergedChains) {
+    let chosenLane = -1;
+    for (let l = minUnmergedLane; l < laneEndRow.length; l++) {
+      if (laneEndRow[l] <= ch.startRow) {
+        chosenLane = l;
+        break;
+      }
+    }
+    if (chosenLane === -1) {
+      chosenLane = Math.max(minUnmergedLane, laneEndRow.length);
+      laneEndRow[chosenLane] = ch.endRow;
     } else {
       laneEndRow[chosenLane] = ch.endRow;
     }
@@ -157,33 +280,17 @@ export function computeGraphLayout(commits: GitCommit[]): GraphNode[] {
     });
 
     // 4.2 穿行线 (top -> bottom)
-    // 目标不是当前 commit 的线继续向下穿行
+    // 目标不是当前 commit 的线在各自泳道继续向下穿行
     topState.forEach((state, lane) => {
       if (state.targetHash !== commit.hash) {
-        if (lane !== currentLane) {
-          routes.push({
-            fromLane: lane,
-            toLane: lane,
-            fromY: 'top',
-            toY: 'bottom',
-            color: state.color,
-          });
-          nextBottomState.set(lane, state);
-        } else {
-          // 若穿行线与当前节点所在泳道冲突，平滑借道右侧避开节点圆圈
-          let bypassLane = lane + 1;
-          while (topState.has(bypassLane) || nextBottomState.has(bypassLane)) {
-            bypassLane++;
-          }
-          routes.push({
-            fromLane: lane,
-            toLane: bypassLane,
-            fromY: 'top',
-            toY: 'bottom',
-            color: state.color,
-          });
-          nextBottomState.set(bypassLane, state);
-        }
+        routes.push({
+          fromLane: lane,
+          toLane: lane,
+          fromY: 'top',
+          toY: 'bottom',
+          color: state.color,
+        });
+        nextBottomState.set(lane, state);
       }
     });
 
@@ -191,21 +298,18 @@ export function computeGraphLayout(commits: GitCommit[]): GraphNode[] {
     // 仅对存在于当前列表中的有效父节点连线，消除外部长距幽灵线
     const validParents = commit.parents.filter((p) => commitMap.has(p));
     if (validParents.length > 0) {
-      // First Parent: 沿着 First Parent 的泳道直通或弯向下行
+      // First Parent: 沿着自身泳道向下垂直延伸，守恒直连！
       const p0 = validParents[0];
-      const p0Meta = commitMap.get(p0)!;
-      const p0Lane = p0Meta.lane;
-
       routes.push({
         fromLane: currentLane,
-        toLane: p0Lane,
+        toLane: currentLane,
         fromY: 'center',
         toY: 'bottom',
         color: nodeColor,
       });
-      nextBottomState.set(p0Lane, { targetHash: p0, color: nodeColor });
+      nextBottomState.set(currentLane, { targetHash: p0, color: nodeColor });
 
-      // Merge Parents (parents[1...])
+      // Merge Parents (parents[1...]): 直接分叉连向被合并分支的真实泳道
       for (let pIdx = 1; pIdx < validParents.length; pIdx++) {
         const pOther = validParents[pIdx];
         const pOtherMeta = commitMap.get(pOther)!;

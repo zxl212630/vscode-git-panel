@@ -127,8 +127,8 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
 
   // 2. 计算图谱节点拓扑
   const graphNodes = useMemo(() => {
-    return computeGraphLayout(filteredCommits);
-  }, [filteredCommits]);
+    return computeGraphLayout(filteredCommits, filteredBranch || undefined);
+  }, [filteredCommits, filteredBranch]);
 
   // 最大泳道数，用于确定 SVG 区域宽度
   const maxLanes = useMemo(() => {

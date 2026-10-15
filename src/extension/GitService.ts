@@ -182,7 +182,6 @@ export class GitService {
       'log',
       refArg,
       '--date-order',
-      '--topo-order',
       `--format=${format}`,
       `-n`,
       maxCount.toString(),
