@@ -1,16 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { GitBranch, GitCommit, GraphNode } from '../../common/types';
 import { computeGraphLayout } from '../utils/graphLayout';
-import { vscode } from '../utils/vscode';
-import { ContextMenu, MenuItem } from './ContextMenu';
 import {
-  GitCommit as GitCommitIcon,
   Tag,
-  Copy,
   GitBranch as GitBranchIcon,
-  RotateCcw,
-  Undo2,
-  Check,
   Loader2,
 } from 'lucide-react';
 
@@ -49,7 +42,6 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: GitCommit } | null>(null);
 
   // 1. 过滤 commits（分支筛选采用图的可达性算法，展示该分支全部祖先历史）
   const filteredCommits = useMemo(() => {
@@ -214,102 +206,6 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
     }
   }, [selectedHash, graphNodes]);
 
-  const handleRowContextMenu = (e: React.MouseEvent, commit: GitCommit) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      commit,
-    });
-  };
-
-  const getMenuItems = (commit: GitCommit): MenuItem[] => {
-    return [
-      {
-        label: `新建分支 (New Branch Here)...`,
-        icon: <GitBranchIcon className="w-3.5 h-3.5 text-green-400" />,
-        onClick: () => {
-          const name = prompt(`基于提交 ${commit.shortHash} 创建新分支:`);
-          if (name && name.trim()) {
-            vscode.postMessage({
-              type: 'createBranch',
-              branchName: name.trim(),
-              targetHash: commit.hash,
-            });
-          }
-        },
-      },
-      {
-        label: `新建标签 (Create Tag)...`,
-        icon: <Tag className="w-3.5 h-3.5 text-yellow-400" />,
-        onClick: () => {
-          alert('功能提示: 可以通过终端打标签或直接基于此分支创建');
-        },
-      },
-      { isSeparator: true },
-      {
-        label: `摘取提交 (Cherry-pick)`,
-        icon: <Check className="w-3.5 h-3.5 text-blue-400" />,
-        onClick: () => {
-          if (confirm(`确认要 Cherry-pick 提交 ${commit.shortHash} 吗？`)) {
-            vscode.postMessage({
-              type: 'cherryPickCommit',
-              commitHash: commit.hash,
-            });
-          }
-        },
-      },
-      {
-        label: `重置分支到此处 (Reset Head Here - Soft)`,
-        icon: <RotateCcw className="w-3.5 h-3.5 text-amber-400" />,
-        onClick: () => {
-          if (confirm(`确认要以 soft 方式重置分支到 ${commit.shortHash} 吗？`)) {
-            vscode.postMessage({
-              type: 'resetCommit',
-              commitHash: commit.hash,
-              mode: 'soft',
-            });
-          }
-        },
-      },
-      {
-        label: `重置分支到此处 (Reset Head Here - Hard)`,
-        icon: <RotateCcw className="w-3.5 h-3.5 text-red-500" />,
-        danger: true,
-        onClick: () => {
-          if (confirm(`【警告】Hard 重置将丢弃未提交的文件变更！确定重置到 ${commit.shortHash} 吗？`)) {
-            vscode.postMessage({
-              type: 'resetCommit',
-              commitHash: commit.hash,
-              mode: 'hard',
-            });
-          }
-        },
-      },
-      {
-        label: `撤销提交 (Revert Commit)`,
-        icon: <Undo2 className="w-3.5 h-3.5 text-purple-400" />,
-        onClick: () => {
-          if (confirm(`确认要撤销提交 ${commit.shortHash} 吗？`)) {
-            vscode.postMessage({
-              type: 'revertCommit',
-              commitHash: commit.hash,
-            });
-          }
-        },
-      },
-      { isSeparator: true },
-      {
-        label: `复制 Commit Hash (${commit.shortHash})`,
-        icon: <Copy className="w-3.5 h-3.5 text-gray-400" />,
-        onClick: () => {
-          navigator.clipboard.writeText(commit.hash);
-        },
-      },
-    ];
-  };
-
   const formatDate = (ts: number) => {
     if (!ts) return '';
     const d = new Date(ts * 1000);
@@ -351,7 +247,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
                 isSelected ? 'bg-vscode-activeBg text-vscode-activeFg font-medium' : 'text-vscode-fg'
               }`}
               onClick={() => onSelectCommit(commit)}
-              onContextMenu={(e) => handleRowContextMenu(e, commit)}
+              onContextMenu={(e) => e.preventDefault()}
             >
               {/* SVG 拓扑图谱列 */}
               <div style={{ width: svgWidth, height: ROW_HEIGHT }} className="flex-shrink-0 relative">
@@ -519,16 +415,6 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
           <div className="p-8 text-center text-gray-500 italic">没有匹配的提交记录</div>
         )}
       </div>
-
-      {/* 右键菜单 */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={getMenuItems(contextMenu.commit)}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
     </div>
   );
 };
