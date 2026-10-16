@@ -235,23 +235,46 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
           break;
 
         case 'pushBranch':
+          this.postMessage({ type: 'loading', isLoading: true, message: `正在推送分支 '${msg.branchName}'...` });
           try {
-            await this.gitService.push(msg.branchName, msg.remote);
+            await vscode.window.withProgress(
+              {
+                location: vscode.ProgressLocation.Notification,
+                title: `Git Panel: 正在推送分支 '${msg.branchName}'...`,
+                cancellable: false,
+              },
+              async () => {
+                await this.gitService.push(msg.branchName, msg.remote);
+              }
+            );
             vscode.window.showInformationMessage(`推送成功: ${msg.branchName}`);
           } catch (err: any) {
             vscode.window.showErrorMessage(`推送失败: ${err.message}`);
+          } finally {
+            await this.refreshData();
           }
-          await this.refreshData();
           break;
 
         case 'updateBranch':
+          this.postMessage({ type: 'loading', isLoading: true, message: '正在更新分支 (git pull)...' });
           try {
-            const out = await this.gitService.update();
+            let out = '';
+            await vscode.window.withProgress(
+              {
+                location: vscode.ProgressLocation.Notification,
+                title: 'Git Panel: 正在更新分支 (git pull)...',
+                cancellable: false,
+              },
+              async () => {
+                out = await this.gitService.update();
+              }
+            );
             vscode.window.showInformationMessage(`更新分支成功: ${out.trim() || 'Already up to date.'}`);
           } catch (err: any) {
             vscode.window.showErrorMessage(`更新分支失败: ${err.message}`);
+          } finally {
+            await this.refreshData();
           }
-          await this.refreshData();
           break;
 
         case 'compareBranchWithHead': {

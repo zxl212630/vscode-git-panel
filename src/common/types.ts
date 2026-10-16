@@ -19,6 +19,8 @@ export interface GitBranch {
   remoteName?: string;
   upstream?: string;
   commitHash: string;
+  ahead?: number;
+  behind?: number;
 }
 
 export type GitFileStatus = 'A' | 'M' | 'D' | 'R' | 'C' | 'U';

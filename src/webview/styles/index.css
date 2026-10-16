@@ -35,12 +35,15 @@ body {
   background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
 }
 
-/* 禁用文本选择以达到 IDE 原生触感 */
-* {
+/* 默认禁用文本选择以达到 IDE 原生触感 */
+body {
   user-select: none;
+}
+
+* {
   box-sizing: border-box;
 }
 
-input, textarea {
+input, textarea, .select-text, .select-text * {
   user-select: text;
 }

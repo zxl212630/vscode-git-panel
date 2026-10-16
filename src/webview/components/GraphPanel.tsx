@@ -8,6 +8,7 @@ import {
   GitBranch as GitBranchIcon,
   Loader2,
   Copy,
+  ClipboardCopy,
   Cherry,
   RotateCcw,
 } from 'lucide-react';
@@ -50,6 +51,9 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: GitCommit } | null>(null);
+  // 多选提交（Shift 范围选、Cmd/Ctrl 点选）；selectedHash 作为"主选中项"驱动右侧详情
+  const [selectedHashes, setSelectedHashes] = useState<string[]>([]);
+  const lastClickedHashRef = useRef<string | null>(null);
 
   // 1. 过滤 commits（分支筛选采用图的可达性算法，展示该分支全部祖先历史）
   const filteredCommits = useMemo(() => {
@@ -214,6 +218,13 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
     }
   }, [selectedHash, graphNodes]);
 
+  // 7. 外部触发选中提交变动（刷新/联动）时，重置为单选状态
+  useEffect(() => {
+    if (!selectedHash) return;
+    setSelectedHashes((prev) => (prev.includes(selectedHash) ? prev : [selectedHash]));
+    lastClickedHashRef.current = selectedHash;
+  }, [selectedHash]);
+
   const formatDate = (ts: number) => {
     if (!ts) return '';
     const d = new Date(ts * 1000);
@@ -225,9 +236,54 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
     return `${year}/${month}/${day} ${hours}:${minutes}`;
   };
 
+  const handleRowClick = (e: React.MouseEvent, commit: GitCommit) => {
+    const order = graphNodes.map((n) => n.commit.hash);
+
+    // Shift+Click：从锚点到当前项的范围多选
+    if (e.shiftKey && lastClickedHashRef.current) {
+      const anchorIdx = order.indexOf(lastClickedHashRef.current);
+      const targetIdx = order.indexOf(commit.hash);
+      if (anchorIdx !== -1 && targetIdx !== -1) {
+        const [start, end] = anchorIdx < targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+        setSelectedHashes(order.slice(start, end + 1));
+        onSelectCommit(commit);
+        return;
+      }
+    }
+
+    // Cmd/Ctrl+Click：切换单项多选
+    if (e.metaKey || e.ctrlKey) {
+      if (selectedHashes.includes(commit.hash)) {
+        const next = selectedHashes.filter((h) => h !== commit.hash);
+        if (next.length === 0) return; // 保留至少一个选中项
+        setSelectedHashes(next);
+        if (selectedHash === commit.hash) {
+          const fallback = graphNodes.find((n) => n.commit.hash === next[next.length - 1]);
+          if (fallback) onSelectCommit(fallback.commit);
+        }
+      } else {
+        setSelectedHashes([...selectedHashes, commit.hash]);
+        lastClickedHashRef.current = commit.hash;
+        onSelectCommit(commit);
+      }
+      return;
+    }
+
+    // 普通点击：单选
+    setSelectedHashes([commit.hash]);
+    lastClickedHashRef.current = commit.hash;
+    onSelectCommit(commit);
+  };
+
   const handleRowContextMenu = (e: React.MouseEvent, commit: GitCommit) => {
     e.preventDefault();
     e.stopPropagation();
+    // 右键目标不在当前多选中时，将选中重置为该提交
+    if (!selectedHashes.includes(commit.hash)) {
+      setSelectedHashes([commit.hash]);
+      lastClickedHashRef.current = commit.hash;
+      onSelectCommit(commit);
+    }
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -257,7 +313,27 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
       },
       { isSeparator: true },
 
-      // 2. Cherry-Pick
+      // 2. Copy Commit Message（支持多选批量复制）
+      {
+        label:
+          selectedHashes.includes(commit.hash) && selectedHashes.length > 1
+            ? `Copy Commit Message (${selectedHashes.length} Commits)`
+            : 'Copy Commit Message',
+        icon: <ClipboardCopy className="w-3.5 h-3.5 opacity-80" />,
+        onClick: () => {
+          const targets = selectedHashes.includes(commit.hash)
+            ? graphNodes.filter((n) => selectedHashes.includes(n.commit.hash)).map((n) => n.commit)
+            : [commit];
+          vscode.postMessage({
+            type: 'copyToClipboard',
+            text: targets.map((t) => t.subject).join('\n'),
+            message: targets.length > 1 ? `已复制 ${targets.length} 条提交信息` : '已复制提交信息',
+          });
+        },
+      },
+      { isSeparator: true },
+
+      // 3. Cherry-Pick
       {
         label: 'Cherry-Pick',
         icon: <Cherry className="w-3.5 h-3.5 text-red-400" />,
@@ -270,7 +346,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
       },
       { isSeparator: true },
 
-      // 3. Checkout Revision
+      // 4. Checkout Revision
       {
         label: 'Checkout Revision',
         onClick: () => {
@@ -282,7 +358,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
       },
       { isSeparator: true },
 
-      // 4. Reset & Revert & Undo & Edit Message
+      // 5. Reset & Revert & Undo & Edit Message
       {
         label: 'Reset Current Branch to Here...',
         icon: <RotateCcw className="w-3.5 h-3.5 text-amber-400" />,
@@ -326,7 +402,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
       },
       { isSeparator: true },
 
-      // 5. New Branch & New Tag
+      // 6. New Branch & New Tag
       {
         label: 'New Branch...',
         shortcut: '⌥⌘N',
@@ -368,7 +444,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
 
         {visibleNodes.map((node) => {
           const { commit, lane, color, routes } = node;
-          const isSelected = selectedHash === commit.hash;
+          const isSelected = selectedHashes.includes(commit.hash);
           const cx = lane * LANE_WIDTH + 8;
           const cy = ROW_HEIGHT / 2;
 
@@ -379,7 +455,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
               className={`flex items-center cursor-pointer hover:bg-vscode-hoverBg px-2 group ${
                 isSelected ? 'bg-vscode-activeBg text-vscode-activeFg font-medium' : 'text-vscode-fg'
               }`}
-              onClick={() => onSelectCommit(commit)}
+              onClick={(e) => handleRowClick(e, commit)}
               onContextMenu={(e) => handleRowContextMenu(e, commit)}
             >
               {/* SVG 拓扑图谱列 */}

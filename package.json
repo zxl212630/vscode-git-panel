@@ -2,7 +2,7 @@
   "name": "vscode-git-panel",
   "displayName": "Git Panel (IDEA Style)",
   "description": "IntelliJ IDEA style Git panel for VS Code in bottom panel area with Branch management, Git Graph, and Commit Diff inspection.",
-  "version": "0.1.0",
+  "version": "0.0.2",
   "publisher": "zxl",
   "engines": {
     "vscode": "^1.85.0"

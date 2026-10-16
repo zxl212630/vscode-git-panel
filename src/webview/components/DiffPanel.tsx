@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { GitCommitDetail, GitChangedFile, GitFileStatus, CompareDetail } from '../../common/types';
 import { vscode } from '../utils/vscode';
 import {
@@ -38,6 +38,34 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'tree' | 'flat'>('tree');
   const [collapsedDirs, setCollapsedDirs] = useState<Record<string, boolean>>({});
+
+  // 底部 commit 详情区域高度（拖动分割条调整，localStorage 持久化）
+  const [detailHeight, setDetailHeight] = useState<number>(() => {
+    const saved = localStorage.getItem('git_panel_detail_height');
+    return saved ? parseInt(saved, 10) : 200;
+  });
+  const panelRef = useRef<HTMLDivElement>(null);
+  const isDraggingDivider = useRef(false);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingDivider.current || !panelRef.current) return;
+      const rect = panelRef.current.getBoundingClientRect();
+      const newHeight = Math.max(80, Math.min(rect.bottom - e.clientY, rect.height - 80));
+      setDetailHeight(newHeight);
+      localStorage.setItem('git_panel_detail_height', newHeight.toString());
+    };
+    const handleMouseUp = () => {
+      isDraggingDivider.current = false;
+      document.body.style.cursor = 'default';
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   const activeFiles = useMemo(() => {
     if (compareDetail) return compareDetail.files;
@@ -241,7 +269,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
   const filesCount = activeFiles.length;
 
   return (
-    <div className="flex flex-col h-full bg-vscode-sideBg select-none text-gp overflow-hidden">
+    <div ref={panelRef} className="flex flex-col h-full bg-vscode-sideBg select-none text-gp overflow-hidden">
       {/* 对比模式横幅 */}
       {compareDetail && (
         <div className="flex items-center justify-between px-2.5 py-1.5 bg-blue-950/40 border-b border-blue-500/40 text-blue-300 flex-shrink-0">
@@ -319,6 +347,19 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
         )}
       </div>
 
+      {/* 分割条：拖动调整底部详情区域高度 */}
+      {!compareDetail && commitDetail && (
+        <div
+          className="h-[3px] hover:h-[4px] bg-vscode-border hover:bg-vscode-buttonBg cursor-row-resize flex-shrink-0 transition-colors"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            isDraggingDivider.current = true;
+            document.body.style.cursor = 'row-resize';
+          }}
+          title="拖动调整高度"
+        />
+      )}
+
       {/* 下部：元数据信息卡片 */}
       {compareDetail ? (
         <div className="border-t border-vscode-border p-2 bg-vscode-bg/40 flex-shrink-0 text-gp-sm text-gray-400 font-mono">
@@ -335,19 +376,19 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
           </div>
         </div>
       ) : commitDetail ? (
-        <div className="border-t border-vscode-border p-2.5 bg-vscode-bg/50 flex-shrink-0 max-h-[45%] overflow-y-auto flex flex-col gap-1.5 text-gp">
-          {/* Commit Message */}
-          <div className="font-semibold text-vscode-fg whitespace-pre-wrap break-words leading-tight">
-            {commitDetail.subject}
-          </div>
-          {commitDetail.body && (
-            <div className="text-gray-400 text-gp-sm whitespace-pre-wrap break-words font-mono bg-vscode-sideBg/50 p-1.5 rounded border border-vscode-border/50">
-              {commitDetail.body}
+        <div
+          style={{ height: detailHeight, maxHeight: '85%' }}
+          className="p-2.5 bg-vscode-bg/50 flex-shrink-0 overflow-y-auto flex flex-col gap-1.5 text-gp select-text cursor-text"
+        >
+          {/* Commit Message (完整提交信息) */}
+          {(commitDetail.body || commitDetail.subject) && (
+            <div className="text-vscode-fg/90 text-gp-sm whitespace-pre-wrap break-words font-mono bg-vscode-sideBg/50 p-1.5 rounded">
+              {commitDetail.body || commitDetail.subject}
             </div>
           )}
 
           {/* 元数据行 */}
-          <div className="flex flex-col gap-1 text-gp-sm text-gray-400 pt-1 border-t border-vscode-border/40 font-mono">
+          <div className="flex flex-col gap-1 text-gp-sm text-gray-400 pt-1 font-mono">
             <div className="flex items-center gap-1.5">
               <Hash className="w-3 h-3 opacity-60 flex-shrink-0" />
               <span

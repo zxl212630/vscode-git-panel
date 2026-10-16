@@ -1,0 +1,13 @@
+.vscode/**
+.gitignore
+src/**
+docs/**
+node_modules/**
+esbuild.js
+vite.config.ts
+tsconfig.json
+tsconfig.webview.json
+postcss.config.cjs
+tailwind.config.js
+pnpm-lock.yaml
+*.vsix

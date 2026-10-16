@@ -195,14 +195,14 @@ export class GitService {
     if (!this.activeRepoPath) return [];
 
     const sep = GitService.GP_SEP;
-    const format = `%(refname)${sep}%(objectname)${sep}%(upstream:short)${sep}%(HEAD)`;
+    const format = `%(refname)${sep}%(objectname)${sep}%(upstream:short)${sep}%(HEAD)${sep}%(upstream:track)`;
     const output = await this.exec(['for-each-ref', `--format=${format}`, 'refs/heads', 'refs/remotes']);
     const lines = output.trim().split('\n').filter(Boolean);
 
     const branches: GitBranch[] = [];
 
     for (const line of lines) {
-      const [refname, commitHash, upstream, headFlag] = line.split(sep);
+      const [refname, commitHash, upstream, headFlag, track] = line.split(sep);
       if (!refname) continue;
 
       const isRemote = refname.startsWith('refs/remotes/');
@@ -223,6 +223,19 @@ export class GitService {
         name = refname.replace('refs/heads/', '');
       }
 
+      let ahead: number | undefined = undefined;
+      let behind: number | undefined = undefined;
+      if (track) {
+        const aheadMatch = track.match(/ahead\s+(\d+)/);
+        if (aheadMatch) {
+          ahead = parseInt(aheadMatch[1], 10);
+        }
+        const behindMatch = track.match(/behind\s+(\d+)/);
+        if (behindMatch) {
+          behind = parseInt(behindMatch[1], 10);
+        }
+      }
+
       branches.push({
         name,
         fullName: refname,
@@ -231,6 +244,8 @@ export class GitService {
         remoteName,
         upstream: upstream?.trim() || undefined,
         commitHash: commitHash?.trim() || '',
+        ahead,
+        behind,
       });
     }
 
@@ -244,9 +259,10 @@ export class GitService {
     // Format: Hash, Parents, AuthorName, AuthorEmail, Timestamp, RefNames, Subject
     const format = `%H${sep}%P${sep}%an${sep}%ae${sep}%at${sep}%D${sep}%s`;
     const refArg = branchTarget && branchTarget.trim() ? branchTarget.trim() : '--all';
+    const refArgs = branchTarget && branchTarget.trim() ? [refArg] : ['--exclude=refs/stash', refArg];
     const args = [
       'log',
-      refArg,
+      ...refArgs,
       '--date-order',
       `--format=${format}`,
       `-n`,

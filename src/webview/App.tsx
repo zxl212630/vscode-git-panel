@@ -256,6 +256,7 @@ export const App: React.FC = () => {
               selectedBranchName={selectedBranch}
               onSelectBranch={handleBranchClick}
               onSwitchRepo={handleSwitchRepo}
+              isLoading={isLoading}
             />
           }
           center={

@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Star,
   Check,
+  Loader2,
 } from 'lucide-react';
 
 interface BranchPanelProps {
@@ -21,6 +22,7 @@ interface BranchPanelProps {
   selectedBranchName: string | null;
   onSelectBranch: (branch: GitBranch) => void;
   onSwitchRepo: (repoPath: string) => void;
+  isLoading?: boolean;
 }
 
 interface BranchTreeNode {
@@ -29,7 +31,6 @@ interface BranchTreeNode {
   isFolder: boolean;
   branch?: GitBranch;
   children: BranchTreeNode[];
-  totalBranches: number;
 }
 
 export const BranchPanel: React.FC<BranchPanelProps> = ({
@@ -39,6 +40,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
   selectedBranchName,
   onSelectBranch,
   onSwitchRepo,
+  isLoading = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLocalExpanded, setIsLocalExpanded] = useState(true);
@@ -47,6 +49,13 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
   const [isRepoDropdownOpen, setIsRepoDropdownOpen] = useState(false);
   const repoDropdownRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [operatingBranch, setOperatingBranch] = useState<{ name: string; action: 'update' | 'push' } | null>(null);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setOperatingBranch(null);
+    }
+  }, [isLoading]);
 
   // 点击外部关闭仓库选择下拉框
   useEffect(() => {
@@ -89,7 +98,6 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
       path: prefix,
       isFolder: true,
       children: [],
-      totalBranches: 0,
     };
 
     for (const b of branchList) {
@@ -108,7 +116,6 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
             isFolder: false,
             branch: b,
             children: [],
-            totalBranches: 1,
           });
         } else {
           let folder = current.children.find((c) => c.isFolder && c.name === part);
@@ -118,7 +125,6 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
               path: currentPath,
               isFolder: true,
               children: [],
-              totalBranches: 0,
             };
             current.children.push(folder);
           }
@@ -127,21 +133,18 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
       }
     }
 
-    const sortNodes = (nodes: BranchTreeNode[]): number => {
+    const sortNodes = (nodes: BranchTreeNode[]) => {
       nodes.sort((a, b) => {
         if (a.isFolder && !b.isFolder) return -1;
         if (!a.isFolder && b.isFolder) return 1;
         return a.name.localeCompare(b.name);
       });
 
-      let count = 0;
       for (const node of nodes) {
         if (node.isFolder) {
-          node.totalBranches = sortNodes(node.children);
+          sortNodes(node.children);
         }
-        count += node.totalBranches;
       }
-      return count;
     };
 
     sortNodes(root.children);
@@ -280,14 +283,18 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
         },
         { isSeparator: true },
         {
-          label: 'Update',
+          label: operatingBranch?.name === branch.name && operatingBranch.action === 'update' ? 'Updating...' : 'Update',
+          disabled: !!operatingBranch || isLoading,
           onClick: () => {
+            setOperatingBranch({ name: branch.name, action: 'update' });
             vscode.postMessage({ type: 'updateBranch' });
           },
         },
         {
-          label: 'Push...',
+          label: operatingBranch?.name === branch.name && operatingBranch.action === 'push' ? 'Pushing...' : 'Push...',
+          disabled: !!operatingBranch || isLoading,
           onClick: () => {
+            setOperatingBranch({ name: branch.name, action: 'push' });
             vscode.postMessage({
               type: 'pushBranch',
               branchName: branch.name,
@@ -384,8 +391,10 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
         disabled: true,
       },
       {
-        label: 'Push...',
+        label: operatingBranch?.name === branch.name && operatingBranch.action === 'push' ? 'Pushing...' : 'Push...',
+        disabled: !!operatingBranch || isLoading,
         onClick: () => {
+          setOperatingBranch({ name: branch.name, action: 'push' });
           vscode.postMessage({
             type: 'pushBranch',
             branchName: branch.name,
@@ -417,6 +426,35 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
     ];
   };
 
+  const renderTrackingStatus = (branch: GitBranch) => {
+    const hasAhead = (branch.ahead ?? 0) > 0;
+    const hasBehind = (branch.behind ?? 0) > 0;
+    if (!hasAhead && !hasBehind) return null;
+
+    return (
+      <div className="flex items-center gap-1.5 flex-shrink-0 font-mono text-[11px] font-semibold">
+        {hasAhead && (
+          <span
+            className="text-emerald-500 flex items-center gap-0.5"
+            title={`超前上游 ${branch.ahead} 个提交 (待推送)`}
+          >
+            <span>↗</span>
+            <span>{branch.ahead}</span>
+          </span>
+        )}
+        {hasBehind && (
+          <span
+            className="text-blue-400 flex items-center gap-0.5"
+            title={`落后上游 ${branch.behind} 个提交 (待拉取)`}
+          >
+            <span>↘</span>
+            <span>{branch.behind}</span>
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const renderTreeNode = (node: BranchTreeNode, depth: number = 0) => {
     if (node.isFolder) {
       const expanded = isFolderExpanded(node.path);
@@ -439,7 +477,6 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
               <Folder className="w-3.5 h-3.5 text-blue-400 opacity-80 flex-shrink-0" />
             )}
             <span className="truncate flex-1 font-medium">{node.name}</span>
-            <span className="text-gp-sm opacity-40 ml-1 flex-shrink-0">{node.totalBranches}</span>
           </div>
           {expanded && (
             <div>{node.children.map((child) => renderTreeNode(child, depth + 1))}</div>
@@ -484,6 +521,10 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
         <span className={`truncate flex-1 ${branch.isHead ? 'font-bold' : ''}`}>
           {node.name}
         </span>
+        {renderTrackingStatus(branch)}
+        {(operatingBranch?.name === branch.name || (isLoading && branch.isHead && !operatingBranch)) && (
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 flex-shrink-0" title="正在与远程同步..." />
+        )}
         {branch.isHead && (
           <span className="text-[9px] px-1 bg-yellow-500/20 text-yellow-400 rounded">
             current
@@ -564,6 +605,9 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          {(isLoading || !!operatingBranch) && (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 ml-1 flex-shrink-0" title="正在与远程同步..." />
+          )}
         </div>
       </div>
 
@@ -588,7 +632,11 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
               onContextMenu={(e) => handleContextMenu(e, currentHeadBranch)}
             >
               <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 flex-shrink-0" />
-              <span className="font-semibold truncate">{currentHeadBranch.name}</span>
+              <span className="font-semibold truncate flex-1">{currentHeadBranch.name}</span>
+              {renderTrackingStatus(currentHeadBranch)}
+              {(operatingBranch?.name === currentHeadBranch.name || (isLoading && (!operatingBranch || operatingBranch.name === currentHeadBranch.name))) && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 flex-shrink-0" title="正在与远程同步..." />
+              )}
             </div>
           </div>
         )}
@@ -606,7 +654,9 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
               <ChevronRight className="w-3 h-3 opacity-70" />
             )}
             <span>Local</span>
-            <span className="ml-auto text-gp-sm opacity-50">{localBranches.length}</span>
+            {(isLoading || !!operatingBranch) && (
+              <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-400 ml-1" />
+            )}
           </div>
 
           {isLocalExpanded && (
@@ -632,7 +682,6 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
               <ChevronRight className="w-3 h-3 opacity-70" />
             )}
             <span>Remote</span>
-            <span className="ml-auto text-gp-sm opacity-50">{remoteBranches.length}</span>
           </div>
 
           {isRemoteExpanded && (
