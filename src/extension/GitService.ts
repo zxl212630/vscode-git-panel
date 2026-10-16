@@ -160,7 +160,8 @@ export class GitService {
     }
 
     return new Promise((resolve, reject) => {
-      cp.execFile('git', args, { cwd: targetCwd, maxBuffer: 30 * 1024 * 1024 }, (err, stdout, stderr) => {
+      // core.quotepath=false: 禁止 git 将非 ASCII 路径输出为八进制转义（避免中文路径乱码）
+      cp.execFile('git', ['-c', 'core.quotepath=false', ...args], { cwd: targetCwd, maxBuffer: 30 * 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
           reject(new Error(stderr.trim() || stdout.trim() || err.message));
         } else {

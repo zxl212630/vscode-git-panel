@@ -104,7 +104,26 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
     };
 
     sortNodes(root.children);
-    return root.children || [];
+
+    // 单链目录合并：目录下仅有一个子目录时合并为一行 (如 src/a/b/c)，避免深层单文件路径占多行
+    const collapseSingleChildDirs = (nodes: TreeNode[]): TreeNode[] =>
+      nodes.map((node) => {
+        if (!node.isDirectory) return node;
+        let merged: TreeNode = {
+          ...node,
+          children: collapseSingleChildDirs(node.children || []),
+        };
+        while (merged.children && merged.children.length === 1 && merged.children[0].isDirectory) {
+          const child = merged.children[0];
+          merged = {
+            ...child,
+            name: `${merged.name}/${child.name}`,
+          };
+        }
+        return merged;
+      });
+
+    return collapseSingleChildDirs(root.children || []);
   }, [activeFiles]);
 
   const toggleDir = (dirPath: string) => {
