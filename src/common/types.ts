@@ -86,7 +86,13 @@ export type WebviewMessage =
   | { type: 'updateBranch' }
   | { type: 'cherryPickCommit'; commitHash: string }
   | { type: 'resetCommit'; commitHash: string; mode: 'soft' | 'mixed' | 'hard' }
+  | { type: 'promptResetCommit'; commitHash: string }
   | { type: 'revertCommit'; commitHash: string }
+  | { type: 'undoCommit'; commitHash: string }
+  | { type: 'promptEditCommitMessage'; commitHash: string; currentMessage: string }
+  | { type: 'promptCreateTag'; targetHash: string }
+  | { type: 'checkoutRevision'; commitHash: string }
+  | { type: 'copyToClipboard'; text: string; message?: string }
   | { type: 'filterBranch'; branch: string | null }
   | { type: 'compareBranches'; baseBranch: string; compareBranch: string }
   | { type: 'compareBranchWithHead'; branchName: string }
@@ -103,6 +109,12 @@ export type WebviewMessage =
   | { type: 'exitCompare' }
   | { type: 'loadMoreCommits'; skip: number; limit?: number; branch?: string | null };
 
+export interface RepoOperationState {
+  isCherryPicking: boolean;
+  isMerging: boolean;
+  isRebasing: boolean;
+}
+
 export type ExtensionMessage =
   | {
       type: 'initialState';
@@ -112,7 +124,9 @@ export type ExtensionMessage =
       commits: GitCommit[];
       selectedCommitDetail?: GitCommitDetail | null;
       hasMore?: boolean;
+      repoState?: RepoOperationState;
     }
+  | { type: 'repoStateUpdate'; repoState: RepoOperationState }
   | { type: 'branchesUpdate'; branches: GitBranch[]; activeBranch: string }
   | { type: 'commitsUpdate'; commits: GitCommit[]; hasMore?: boolean }
   | { type: 'appendCommits'; commits: GitCommit[]; hasMore: boolean }

@@ -434,11 +434,68 @@ export class GitService {
     return await this.exec(['cherry-pick', commitHash]);
   }
 
+  public async abortCherryPick(): Promise<string> {
+    return await this.exec(['cherry-pick', '--abort']);
+  }
+
   public async reset(commitHash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<string> {
     return await this.exec(['reset', `--${mode}`, commitHash]);
   }
 
   public async revert(commitHash: string): Promise<string> {
     return await this.exec(['revert', '--no-edit', commitHash]);
+  }
+
+  public async checkoutRevision(commitHash: string): Promise<string> {
+    return await this.exec(['checkout', commitHash]);
+  }
+
+  public async createTag(tagName: string, targetHash: string): Promise<string> {
+    return await this.exec(['tag', tagName, targetHash]);
+  }
+
+  public async undoCommit(): Promise<string> {
+    return await this.exec(['reset', '--soft', 'HEAD~1']);
+  }
+
+  public async editCommitMessage(newMessage: string): Promise<string> {
+    return await this.exec(['commit', '--amend', '-m', newMessage]);
+  }
+
+  public async getRepoOperationState(): Promise<{
+    isCherryPicking: boolean;
+    isMerging: boolean;
+    isRebasing: boolean;
+  }> {
+    if (!this.activeRepoPath) {
+      return { isCherryPicking: false, isMerging: false, isRebasing: false };
+    }
+    try {
+      const checkPath = async (gitName: string): Promise<boolean> => {
+        try {
+          const gitPath = (await this.exec(['rev-parse', '--git-path', gitName])).trim();
+          if (!gitPath) return false;
+          const fullPath = path.isAbsolute(gitPath) ? gitPath : path.join(this.activeRepoPath!, gitPath);
+          return fs.existsSync(fullPath);
+        } catch {
+          return false;
+        }
+      };
+
+      const [isCherryPicking, isMerging, isRebasingMerge, isRebasingApply] = await Promise.all([
+        checkPath('CHERRY_PICK_HEAD'),
+        checkPath('MERGE_HEAD'),
+        checkPath('rebase-merge'),
+        checkPath('rebase-apply'),
+      ]);
+
+      return {
+        isCherryPicking,
+        isMerging,
+        isRebasing: isRebasingMerge || isRebasingApply,
+      };
+    } catch {
+      return { isCherryPicking: false, isMerging: false, isRebasing: false };
+    }
   }
 }

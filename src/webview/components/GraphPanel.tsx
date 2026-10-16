@@ -1,10 +1,15 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { GitBranch, GitCommit, GraphNode } from '../../common/types';
+import type { GitBranch, GitCommit, GraphNode, RepoOperationState } from '../../common/types';
 import { computeGraphLayout } from '../utils/graphLayout';
+import { vscode } from '../utils/vscode';
+import { ContextMenu, MenuItem } from './ContextMenu';
 import {
   Tag,
   GitBranch as GitBranchIcon,
   Loader2,
+  Copy,
+  Cherry,
+  RotateCcw,
 } from 'lucide-react';
 
 interface GraphPanelProps {
@@ -20,6 +25,7 @@ interface GraphPanelProps {
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
+  repoState?: RepoOperationState;
 }
 
 const ROW_HEIGHT = 26;
@@ -38,10 +44,12 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   onLoadMore,
   hasMore,
   isLoadingMore,
+  repoState,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: GitCommit } | null>(null);
 
   // 1. 过滤 commits（分支筛选采用图的可达性算法，展示该分支全部祖先历史）
   const filteredCommits = useMemo(() => {
@@ -217,6 +225,131 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
     return `${year}/${month}/${day} ${hours}:${minutes}`;
   };
 
+  const handleRowContextMenu = (e: React.MouseEvent, commit: GitCommit) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      commit,
+    });
+  };
+
+  const getMenuItems = (commit: GitCommit): MenuItem[] => {
+    const isHead = commit.refs.some((r) => r.includes('HEAD'));
+    const isOperationInProgress = Boolean(
+      repoState?.isCherryPicking || repoState?.isMerging || repoState?.isRebasing
+    );
+
+    return [
+      // 1. Copy Revision Number
+      {
+        label: 'Copy Revision Number',
+        icon: <Copy className="w-3.5 h-3.5 opacity-80" />,
+        shortcut: '⌥⇧⌘C',
+        onClick: () => {
+          vscode.postMessage({
+            type: 'copyToClipboard',
+            text: commit.hash,
+            message: `已复制提交哈希: ${commit.hash.slice(0, 7)}`,
+          });
+        },
+      },
+      { isSeparator: true },
+
+      // 2. Cherry-Pick
+      {
+        label: 'Cherry-Pick',
+        icon: <Cherry className="w-3.5 h-3.5 text-red-400" />,
+        onClick: () => {
+          vscode.postMessage({
+            type: 'cherryPickCommit',
+            commitHash: commit.hash,
+          });
+        },
+      },
+      { isSeparator: true },
+
+      // 3. Checkout Revision
+      {
+        label: 'Checkout Revision',
+        onClick: () => {
+          vscode.postMessage({
+            type: 'checkoutRevision',
+            commitHash: commit.hash,
+          });
+        },
+      },
+      { isSeparator: true },
+
+      // 4. Reset & Revert & Undo & Edit Message
+      {
+        label: 'Reset Current Branch to Here...',
+        icon: <RotateCcw className="w-3.5 h-3.5 text-amber-400" />,
+        onClick: () => {
+          vscode.postMessage({
+            type: 'promptResetCommit',
+            commitHash: commit.hash,
+          });
+        },
+      },
+      {
+        label: 'Revert Commit',
+        onClick: () => {
+          vscode.postMessage({
+            type: 'revertCommit',
+            commitHash: commit.hash,
+          });
+        },
+      },
+      {
+        label: 'Undo Commit...',
+        disabled: !isHead || isOperationInProgress,
+        onClick: () => {
+          vscode.postMessage({
+            type: 'undoCommit',
+            commitHash: commit.hash,
+          });
+        },
+      },
+      {
+        label: 'Edit Commit Message...',
+        shortcut: 'F2',
+        disabled: !isHead || isOperationInProgress,
+        onClick: () => {
+          vscode.postMessage({
+            type: 'promptEditCommitMessage',
+            commitHash: commit.hash,
+            currentMessage: commit.subject,
+          });
+        },
+      },
+      { isSeparator: true },
+
+      // 5. New Branch & New Tag
+      {
+        label: 'New Branch...',
+        shortcut: '⌥⌘N',
+        onClick: () => {
+          vscode.postMessage({
+            type: 'promptCreateBranch',
+            targetHash: commit.hash,
+            baseBranch: commit.shortHash,
+          });
+        },
+      },
+      {
+        label: 'New Tag...',
+        onClick: () => {
+          vscode.postMessage({
+            type: 'promptCreateTag',
+            targetHash: commit.hash,
+          });
+        },
+      },
+    ];
+  };
+
   return (
     <div className="flex flex-col h-full bg-vscode-bg select-none text-[11px] overflow-hidden">
       {/* 表格头 */}
@@ -247,7 +380,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
                 isSelected ? 'bg-vscode-activeBg text-vscode-activeFg font-medium' : 'text-vscode-fg'
               }`}
               onClick={() => onSelectCommit(commit)}
-              onContextMenu={(e) => e.preventDefault()}
+              onContextMenu={(e) => handleRowContextMenu(e, commit)}
             >
               {/* SVG 拓扑图谱列 */}
               <div style={{ width: svgWidth, height: ROW_HEIGHT }} className="flex-shrink-0 relative">
@@ -415,6 +548,16 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
           <div className="p-8 text-center text-gray-500 italic">没有匹配的提交记录</div>
         )}
       </div>
+
+      {/* 提交行右键菜单 */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={getMenuItems(contextMenu.commit)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 };

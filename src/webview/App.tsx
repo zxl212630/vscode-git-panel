@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { GitBranch, GitCommit, GitCommitDetail, RepoInfo, ExtensionMessage, CompareDetail } from '../common/types';
+import { GitBranch, GitCommit, GitCommitDetail, RepoInfo, ExtensionMessage, CompareDetail, RepoOperationState } from '../common/types';
 import { vscode } from './utils/vscode';
 import { SplitPane } from './components/SplitPane';
 import { BranchPanel } from './components/BranchPanel';
@@ -16,6 +16,11 @@ export const App: React.FC = () => {
   const [selectedCommit, setSelectedCommit] = useState<GitCommit | null>(null);
   const [selectedCommitDetail, setSelectedCommitDetail] = useState<GitCommitDetail | null>(null);
   const [compareDetail, setCompareDetail] = useState<CompareDetail | null>(null);
+  const [repoState, setRepoState] = useState<RepoOperationState>({
+    isCherryPicking: false,
+    isMerging: false,
+    isRebasing: false,
+  });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(true);
@@ -56,8 +61,15 @@ export const App: React.FC = () => {
           if (msg.selectedCommitDetail) {
             setSelectedCommitDetail(msg.selectedCommitDetail);
           }
+          if (msg.repoState) {
+            setRepoState(msg.repoState);
+          }
           setIsLoading(false);
           setErrorMessage(null);
+          break;
+
+        case 'repoStateUpdate':
+          setRepoState(msg.repoState);
           break;
 
         case 'commitDetails':
@@ -267,6 +279,7 @@ export const App: React.FC = () => {
                   onLoadMore={handleLoadMore}
                   hasMore={hasMore}
                   isLoadingMore={isLoadingMore}
+                  repoState={repoState}
                 />
               </div>
             </div>

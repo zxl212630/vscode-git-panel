@@ -51,6 +51,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     zIndex: 9999,
   };
 
+  const hasAnyIcon = items.some((item) => !item.isSeparator && !!item.icon);
+
   return (
     <div
       ref={menuRef}
@@ -86,7 +88,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                 }
               }}
             >
-              {item.icon && <span className="w-4 h-4 flex items-center justify-center">{item.icon}</span>}
+              {item.icon ? (
+                <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">{item.icon}</span>
+              ) : hasAnyIcon ? (
+                <span className="w-4 h-4 flex-shrink-0" />
+              ) : null}
               <span className="flex-1 truncate">{item.label}</span>
               {item.shortcut && (
                 <span className="text-[10px] opacity-40 ml-4 font-mono font-normal flex-shrink-0">

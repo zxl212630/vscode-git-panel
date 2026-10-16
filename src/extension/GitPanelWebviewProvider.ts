@@ -49,7 +49,9 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
 
   private _setupGitWatcher() {
     this._gitWatcher?.dispose();
-    this._gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/{HEAD,refs/heads/**,refs/remotes/**}');
+    this._gitWatcher = vscode.workspace.createFileSystemWatcher(
+      '**/.git/{HEAD,refs/heads/**,refs/remotes/**,CHERRY_PICK_HEAD,MERGE_HEAD,rebase-merge/**,rebase-apply/**}'
+    );
     
     const refreshDebounced = this._debounce(() => {
       this.refreshData();
@@ -259,15 +261,115 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
           this.postMessage({ type: 'clearCompare' });
           break;
 
-        case 'cherryPickCommit':
+        case 'copyToClipboard': {
+          await vscode.env.clipboard.writeText(msg.text);
+          vscode.window.showInformationMessage(msg.message || `已复制到剪贴板: ${msg.text}`);
+          break;
+        }
+
+        case 'cherryPickCommit': {
+          const short = msg.commitHash.substring(0, 7);
           try {
             await this.gitService.cherryPick(msg.commitHash);
-            vscode.window.showInformationMessage(`成功 Cherry-pick 提交: ${msg.commitHash.slice(0, 7)}`);
+            vscode.window.showInformationMessage(`成功 Cherry-pick 提交: ${short}`);
           } catch (err: any) {
-            vscode.window.showErrorMessage(`Cherry-pick 失败: ${err.message}`);
+            const opState = await this.gitService.getRepoOperationState();
+            if (opState.isCherryPicking) {
+              const choice = await vscode.window.showWarningMessage(
+                `Cherry-pick 提交 ${short} 时产生代码冲突，是否继续？`,
+                {
+                  modal: true,
+                  detail:
+                    '• 选择【继续】：保留冲突文件，您可在编辑器中手动解决冲突并提交。\n• 选择【中止 (Abort)】：将自动执行 git cherry-pick --abort 取消本次操作并回滚。',
+                },
+                '继续',
+                '中止 (Abort)'
+              );
+              if (choice === '中止 (Abort)') {
+                try {
+                  await this.gitService.abortCherryPick();
+                  vscode.window.showInformationMessage('已中止 Cherry-pick，工作区已恢复原状。');
+                } catch (abortErr: any) {
+                  vscode.window.showErrorMessage(`中止 Cherry-pick 失败: ${abortErr.message}`);
+                }
+              } else {
+                vscode.window.showInformationMessage(
+                  '已保留冲突现场，请在解决冲突后完成提交或执行 git cherry-pick --continue。'
+                );
+              }
+            } else {
+              vscode.window.showErrorMessage(`Cherry-pick 失败: ${err.message}`);
+            }
           }
           await this.refreshData();
           break;
+        }
+
+        case 'checkoutRevision': {
+          const short = msg.commitHash.substring(0, 7);
+          const confirm = await vscode.window.showWarningMessage(
+            `确认检出提交 ${short} 吗？\n当前工作副本将进入 Detached HEAD（分离头指针）状态。`,
+            { modal: true },
+            '检出 (Checkout)'
+          );
+          if (confirm === '检出 (Checkout)') {
+            try {
+              await this.gitService.checkoutRevision(msg.commitHash);
+              vscode.window.showInformationMessage(`已检出到提交: ${short}`);
+              await this.refreshData();
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`检出失败: ${err.message}`);
+            }
+          }
+          break;
+        }
+
+        case 'promptResetCommit': {
+          const short = msg.commitHash.substring(0, 7);
+          const pick = await vscode.window.showQuickPick(
+            [
+              {
+                label: 'Soft',
+                description: '保留所有未提交改动并放入暂存区 (git reset --soft)',
+                mode: 'soft' as const,
+              },
+              {
+                label: 'Mixed',
+                description: '保留工作区改动，清空暂存区 (git reset --mixed，默认模式)',
+                mode: 'mixed' as const,
+              },
+              {
+                label: 'Hard',
+                description: '【高危警告】丢弃所有工作区和暂存区的未提交改动 (git reset --hard)',
+                mode: 'hard' as const,
+              },
+            ],
+            {
+              placeHolder: `选择重置当前分支到提交 ${short} 的方式`,
+              title: `Reset Current Branch to Here (${short})`,
+            }
+          );
+
+          if (!pick) break;
+
+          if (pick.mode === 'hard') {
+            const confirmHard = await vscode.window.showWarningMessage(
+              `【危险】Hard 重置将永久丢弃所有未提交的本地代码修改！确认重置到 ${short} 吗？`,
+              { modal: true },
+              '确认 Hard 重置'
+            );
+            if (confirmHard !== '确认 Hard 重置') break;
+          }
+
+          try {
+            await this.gitService.reset(msg.commitHash, pick.mode);
+            vscode.window.showInformationMessage(`已将当前分支重置到 ${short} (${pick.mode})`);
+            await this.refreshData();
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`重置失败: ${err.message}`);
+          }
+          break;
+        }
 
         case 'resetCommit':
           try {
@@ -279,15 +381,87 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
           await this.refreshData();
           break;
 
-        case 'revertCommit':
+        case 'revertCommit': {
+          const short = msg.commitHash.substring(0, 7);
           try {
             await this.gitService.revert(msg.commitHash);
-            vscode.window.showInformationMessage(`已撤销提交: ${msg.commitHash.slice(0, 7)}`);
+            vscode.window.showInformationMessage(`已撤销提交: ${short}`);
+            await this.refreshData();
           } catch (err: any) {
             vscode.window.showErrorMessage(`撤销失败: ${err.message}`);
           }
-          await this.refreshData();
           break;
+        }
+
+        case 'undoCommit': {
+          const opState = await this.gitService.getRepoOperationState();
+          if (opState.isCherryPicking || opState.isMerging || opState.isRebasing) {
+            vscode.window.showWarningMessage('当前正处于 Cherry-pick / Merge / Rebase 过程中，无法撤销提交。请先完成或中止当前操作 (如 git cherry-pick --abort)。');
+            break;
+          }
+
+          const short = msg.commitHash.substring(0, 7);
+          try {
+            await this.gitService.undoCommit();
+            vscode.window.showInformationMessage(`已撤销提交: ${short}，代码变更已保留在暂存区`);
+            await this.refreshData();
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`撤销提交失败: ${err.message}`);
+          }
+          break;
+        }
+
+        case 'promptEditCommitMessage': {
+          const opState = await this.gitService.getRepoOperationState();
+          if (opState.isCherryPicking || opState.isMerging || opState.isRebasing) {
+            vscode.window.showWarningMessage('当前正处于 Cherry-pick / Merge / Rebase 过程中，无法修改提交信息 (Cannot amend)。请先完成或中止当前操作 (如 git cherry-pick --abort)。');
+            break;
+          }
+
+          const newMsg = await vscode.window.showInputBox({
+            title: '编辑提交信息 (Edit Commit Message)',
+            prompt: '请输入新的提交描述 (git commit --amend)',
+            value: msg.currentMessage,
+            validateInput: (value) => {
+              if (!value || !value.trim()) return '提交描述不能为空';
+              return null;
+            },
+          });
+          if (newMsg !== undefined && newMsg.trim()) {
+            try {
+              await this.gitService.editCommitMessage(newMsg.trim());
+              vscode.window.showInformationMessage('提交信息已成功更新');
+              await this.refreshData();
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`修改提交信息失败: ${err.message}`);
+            }
+          }
+          break;
+        }
+
+        case 'promptCreateTag': {
+          const short = msg.targetHash.substring(0, 7);
+          const tagName = await vscode.window.showInputBox({
+            title: `基于提交 ${short} 创建标签 (New Tag)`,
+            prompt: '请输入新标签名称 (如 v1.0.0)',
+            placeHolder: '例如 v1.0.0',
+            validateInput: (value) => {
+              if (!value || !value.trim()) return '标签名称不能为空';
+              if (/\s/.test(value)) return '标签名称不能包含空格';
+              return null;
+            },
+          });
+          if (tagName && tagName.trim()) {
+            try {
+              await this.gitService.createTag(tagName.trim(), msg.targetHash);
+              vscode.window.showInformationMessage(`成功创建标签: ${tagName.trim()}`);
+              await this.refreshData();
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`创建标签失败: ${err.message}`);
+            }
+          }
+          break;
+        }
 
         case 'filterBranch':
           try {
@@ -344,9 +518,10 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       const pageSize = 500;
-      const [branches, commits] = await Promise.all([
+      const [branches, commits, repoState] = await Promise.all([
         this.gitService.getBranches(),
         this.gitService.getCommits(pageSize, undefined, 0),
+        this.gitService.getRepoOperationState(),
       ]);
 
       let selectedCommitDetail = null;
@@ -362,6 +537,7 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
         commits,
         selectedCommitDetail,
         hasMore: commits.length >= pageSize,
+        repoState,
       });
     } catch (err: any) {
       this.postMessage({ type: 'error', message: err.message || '加载 Git 数据失败' });
