@@ -17,6 +17,8 @@ export const App: React.FC = () => {
   const [selectedCommitDetail, setSelectedCommitDetail] = useState<GitCommitDetail | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
 
   // 过滤状态
   const [searchFilter, setSearchFilter] = useState('');
@@ -44,6 +46,8 @@ export const App: React.FC = () => {
           setActiveRepo(msg.activeRepo);
           setBranches(msg.branches);
           setCommits(msg.commits);
+          setHasMore(msg.hasMore ?? false);
+          setIsLoadingMore(false);
           if (msg.commits.length > 0) {
             setSelectedCommit(msg.commits[0]);
           }
@@ -61,6 +65,8 @@ export const App: React.FC = () => {
 
         case 'commitsUpdate':
           setCommits(msg.commits);
+          setHasMore(msg.hasMore ?? false);
+          setIsLoadingMore(false);
           if (msg.commits.length > 0) {
             setSelectedCommit(msg.commits[0]);
             vscode.postMessage({ type: 'selectCommit', commitHash: msg.commits[0].hash });
@@ -71,6 +77,16 @@ export const App: React.FC = () => {
           setIsLoading(false);
           break;
 
+        case 'appendCommits':
+          setCommits((prev) => {
+            const existing = new Set(prev.map((c) => c.hash));
+            const fresh = msg.commits.filter((c) => !existing.has(c.hash));
+            return [...prev, ...fresh];
+          });
+          setHasMore(msg.hasMore);
+          setIsLoadingMore(false);
+          break;
+
         case 'loading':
           setIsLoading(msg.isLoading);
           break;
@@ -78,6 +94,7 @@ export const App: React.FC = () => {
         case 'error':
           setErrorMessage(msg.message);
           setIsLoading(false);
+          setIsLoadingMore(false);
           break;
       }
     };
@@ -102,14 +119,29 @@ export const App: React.FC = () => {
 
   const handleRefresh = useCallback(() => {
     setIsLoading(true);
+    setHasMore(true);
+    setIsLoadingMore(false);
     vscode.postMessage({ type: 'refresh' });
   }, []);
 
   const handleSelectBranch = useCallback((branch: string | null) => {
     setSelectedBranch(branch);
     setIsLoading(true);
+    setHasMore(true);
+    setIsLoadingMore(false);
     vscode.postMessage({ type: 'filterBranch', branch });
   }, []);
+
+  const handleLoadMore = useCallback(() => {
+    if (isLoading || isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    vscode.postMessage({
+      type: 'loadMoreCommits',
+      skip: commits.length,
+      limit: 500,
+      branch: selectedBranch,
+    });
+  }, [isLoading, isLoadingMore, hasMore, commits.length, selectedBranch]);
 
   const handleJumpToHead = useCallback(() => {
     const headCommit = commits.find((c) => c.refs.some((r) => r.includes('HEAD')));
@@ -170,6 +202,8 @@ export const App: React.FC = () => {
                 onRefresh={handleRefresh}
                 onJumpToHead={handleJumpToHead}
                 commitCount={commits.length}
+                hasMore={hasMore}
+                isLoadingMore={isLoadingMore}
               />
               <div className="flex-1 min-h-0">
                 <GraphPanel
@@ -182,6 +216,9 @@ export const App: React.FC = () => {
                   searchFilter={searchFilter}
                   isRegex={isRegex}
                   isCaseSensitive={isCaseSensitive}
+                  onLoadMore={handleLoadMore}
+                  hasMore={hasMore}
+                  isLoadingMore={isLoadingMore}
                 />
               </div>
             </div>

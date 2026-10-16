@@ -173,10 +173,30 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
 
         case 'filterBranch':
           try {
-            const commits = await this.gitService.getCommits(600, msg.branch || undefined);
-            this.postMessage({ type: 'commitsUpdate', commits });
+            const pageSize = 500;
+            const commits = await this.gitService.getCommits(pageSize, msg.branch || undefined, 0);
+            this.postMessage({
+              type: 'commitsUpdate',
+              commits,
+              hasMore: commits.length >= pageSize,
+            });
           } catch (err: any) {
             this.postMessage({ type: 'error', message: `筛选分支失败: ${err.message}` });
+          }
+          break;
+
+        case 'loadMoreCommits':
+          try {
+            const limit = msg.limit || 500;
+            const skip = msg.skip || 0;
+            const commits = await this.gitService.getCommits(limit, msg.branch || undefined, skip);
+            this.postMessage({
+              type: 'appendCommits',
+              commits,
+              hasMore: commits.length >= limit,
+            });
+          } catch (err: any) {
+            this.postMessage({ type: 'error', message: `加载更多提交失败: ${err.message}` });
           }
           break;
       }
@@ -200,13 +220,15 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
           branches: [],
           commits: [],
           selectedCommitDetail: null,
+          hasMore: false,
         });
         return;
       }
 
+      const pageSize = 500;
       const [branches, commits] = await Promise.all([
         this.gitService.getBranches(),
-        this.gitService.getCommits(600),
+        this.gitService.getCommits(pageSize, undefined, 0),
       ]);
 
       let selectedCommitDetail = null;
@@ -221,6 +243,7 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
         branches,
         commits,
         selectedCommitDetail,
+        hasMore: commits.length >= pageSize,
       });
     } catch (err: any) {
       this.postMessage({ type: 'error', message: err.message || '加载 Git 数据失败' });

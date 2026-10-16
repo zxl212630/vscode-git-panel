@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Undo2,
   Check,
+  Loader2,
 } from 'lucide-react';
 
 interface GraphPanelProps {
@@ -23,6 +24,9 @@ interface GraphPanelProps {
   searchFilter: string;
   isRegex: boolean;
   isCaseSensitive: boolean;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
 }
 
 const ROW_HEIGHT = 26;
@@ -38,6 +42,9 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   searchFilter,
   isRegex,
   isCaseSensitive,
+  onLoadMore,
+  hasMore,
+  isLoadingMore,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -181,6 +188,13 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   const visibleNodes = useMemo(() => {
     return graphNodes.slice(startIndex, endIndex);
   }, [graphNodes, startIndex, endIndex]);
+
+  // 5. 触底加载更多：当滚动位置接近总列表末尾（相差 25 行以内）时触发
+  useEffect(() => {
+    if (hasMore && !isLoadingMore && totalCount > 0 && endIndex >= totalCount - 25) {
+      onLoadMore?.();
+    }
+  }, [endIndex, totalCount, hasMore, isLoadingMore, onLoadMore]);
 
   const handleRowContextMenu = (e: React.MouseEvent, commit: GitCommit) => {
     e.preventDefault();
@@ -469,6 +483,19 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
         })}
 
         <div style={{ height: bottomPadding }} />
+
+        {isLoadingMore && (
+          <div className="flex items-center justify-center py-2.5 text-xs text-vscode-fg opacity-70 gap-2 border-t border-vscode-border/30 bg-vscode-panelBg/30 select-none">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+            <span>正在加载更多提交记录...</span>
+          </div>
+        )}
+
+        {!hasMore && totalCount > 0 && (
+          <div className="py-2 text-center text-[10px] text-gray-500 italic select-none">
+            已到达提交历史起点 (共 {totalCount} 条)
+          </div>
+        )}
 
         {graphNodes.length === 0 && (
           <div className="p-8 text-center text-gray-500 italic">没有匹配的提交记录</div>

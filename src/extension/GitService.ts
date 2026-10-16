@@ -171,21 +171,25 @@ export class GitService {
     return branches;
   }
 
-  public async getCommits(maxCount: number = 600, branchTarget?: string): Promise<GitCommit[]> {
+  public async getCommits(maxCount: number = 500, branchTarget?: string, skip: number = 0): Promise<GitCommit[]> {
     if (!this.activeRepoPath) return [];
 
     const sep = GitService.GP_SEP;
     // Format: Hash, Parents, AuthorName, AuthorEmail, Timestamp, RefNames, Subject
     const format = `%H${sep}%P${sep}%an${sep}%ae${sep}%at${sep}%D${sep}%s`;
     const refArg = branchTarget && branchTarget.trim() ? branchTarget.trim() : '--all';
-    const output = await this.exec([
+    const args = [
       'log',
       refArg,
       '--date-order',
       `--format=${format}`,
       `-n`,
       maxCount.toString(),
-    ]);
+    ];
+    if (skip > 0) {
+      args.push(`--skip=${skip}`);
+    }
+    const output = await this.exec(args);
 
     const lines = output.split('\n');
     const commits: GitCommit[] = [];

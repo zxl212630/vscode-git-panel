@@ -73,7 +73,8 @@ export type WebviewMessage =
   | { type: 'resetCommit'; commitHash: string; mode: 'soft' | 'mixed' | 'hard' }
   | { type: 'revertCommit'; commitHash: string }
   | { type: 'filterBranch'; branch: string | null }
-  | { type: 'compareBranches'; baseBranch: string; compareBranch: string };
+  | { type: 'compareBranches'; baseBranch: string; compareBranch: string }
+  | { type: 'loadMoreCommits'; skip: number; limit?: number; branch?: string | null };
 
 export type ExtensionMessage =
   | {
@@ -83,9 +84,11 @@ export type ExtensionMessage =
       branches: GitBranch[];
       commits: GitCommit[];
       selectedCommitDetail?: GitCommitDetail | null;
+      hasMore?: boolean;
     }
   | { type: 'branchesUpdate'; branches: GitBranch[]; activeBranch: string }
-  | { type: 'commitsUpdate'; commits: GitCommit[] }
+  | { type: 'commitsUpdate'; commits: GitCommit[]; hasMore?: boolean }
+  | { type: 'appendCommits'; commits: GitCommit[]; hasMore: boolean }
   | { type: 'commitDetails'; detail: GitCommitDetail }
   | { type: 'loading'; isLoading: boolean; message?: string }
   | { type: 'error'; message: string }

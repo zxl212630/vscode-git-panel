@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Search, ArrowDownCircle } from 'lucide-react';
+import { RefreshCw, Search, ArrowDownCircle, Loader2 } from 'lucide-react';
 import { GitBranch } from '../../common/types';
 
 interface ToolbarProps {
@@ -18,6 +18,8 @@ interface ToolbarProps {
   onRefresh: () => void;
   onJumpToHead: () => void;
   commitCount: number;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -36,6 +38,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onRefresh,
   onJumpToHead,
   commitCount,
+  hasMore,
+  isLoadingMore,
 }) => {
   return (
     <div className="flex items-center px-2 py-1 gap-2 border-b border-vscode-border bg-vscode-panelBg text-[11px] overflow-x-auto select-none">
@@ -122,8 +126,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
 
-        <span className="text-[10px] opacity-50 px-1 border-l border-vscode-border">
-          {commitCount} commits
+        <span className="text-[10px] opacity-60 px-1 border-l border-vscode-border flex items-center gap-1">
+          {isLoadingMore && <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-400" />}
+          <span>{commitCount}{hasMore ? '+' : ''} commits</span>
         </span>
       </div>
     </div>
