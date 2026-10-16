@@ -42,19 +42,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isLoadingMore,
 }) => {
   return (
-    <div className="flex items-center px-2 py-1 gap-2 border-b border-vscode-border bg-vscode-panelBg text-[11px] overflow-x-auto select-none">
+    <div className="flex items-center px-2 py-1 gap-2 border-b border-vscode-border bg-vscode-panelBg text-gp overflow-x-auto select-none">
       {/* 搜索框组 */}
       <div className="flex items-center bg-vscode-inputBg text-vscode-inputFg border border-vscode-inputBorder rounded px-1.5 py-0.5 max-w-[240px] flex-shrink-0">
         <Search className="w-3 h-3 opacity-50 mr-1 flex-shrink-0" />
         <input
           type="text"
-          className="w-full bg-transparent outline-none text-[11px] placeholder:opacity-50"
+          className="w-full bg-transparent outline-none text-gp placeholder:opacity-50"
           placeholder="Text or hash"
           value={searchText}
           onChange={(e) => onSearchChange(e.target.value)}
         />
         <button
-          className={`ml-1 px-1 rounded text-[10px] font-mono leading-none ${
+          className={`ml-1 px-1 rounded text-gp-sm font-mono leading-none ${
             isRegex ? 'bg-vscode-buttonBg text-white' : 'opacity-40 hover:opacity-100'
           }`}
           onClick={onToggleRegex}
@@ -63,7 +63,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           .*
         </button>
         <button
-          className={`ml-0.5 px-1 rounded text-[10px] font-mono leading-none ${
+          className={`ml-0.5 px-1 rounded text-gp-sm font-mono leading-none ${
             isCaseSensitive ? 'bg-vscode-buttonBg text-white' : 'opacity-40 hover:opacity-100'
           }`}
           onClick={onToggleCaseSensitive}
@@ -75,9 +75,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* 分支筛选 */}
       <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="opacity-60 text-[10px]">Branch:</span>
+        <span className="opacity-60 text-gp-sm">Branch:</span>
         <select
-          className="bg-vscode-inputBg text-vscode-inputFg border border-vscode-inputBorder rounded px-1.5 py-0.5 text-[11px] outline-none max-w-[140px] truncate"
+          className="bg-vscode-inputBg text-vscode-inputFg border border-vscode-inputBorder rounded px-1.5 py-0.5 text-gp outline-none max-w-[140px] truncate"
           value={selectedBranch || ''}
           onChange={(e) => onSelectBranch(e.target.value || null)}
         >
@@ -92,9 +92,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* 用户筛选 */}
       <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="opacity-60 text-[10px]">User:</span>
+        <span className="opacity-60 text-gp-sm">User:</span>
         <select
-          className="bg-vscode-inputBg text-vscode-inputFg border border-vscode-inputBorder rounded px-1.5 py-0.5 text-[11px] outline-none max-w-[130px] truncate"
+          className="bg-vscode-inputBg text-vscode-inputFg border border-vscode-inputBorder rounded px-1.5 py-0.5 text-gp outline-none max-w-[130px] truncate"
           value={selectedAuthor || ''}
           onChange={(e) => onSelectAuthor(e.target.value || null)}
         >
@@ -115,7 +115,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           title="定位到 HEAD"
         >
           <ArrowDownCircle className="w-3.5 h-3.5" />
-          <span className="text-[10px] hidden sm:inline">Jump to HEAD</span>
+          <span className="text-gp-sm hidden sm:inline">Jump to HEAD</span>
         </button>
 
         <button
@@ -126,7 +126,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
 
-        <span className="text-[10px] opacity-60 px-1 border-l border-vscode-border flex items-center gap-1">
+        <span className="text-gp-sm opacity-60 px-1 border-l border-vscode-border flex items-center gap-1">
           {isLoadingMore && <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-400" />}
           <span>{commitCount}{hasMore ? '+' : ''} commits</span>
         </span>

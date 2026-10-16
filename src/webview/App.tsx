@@ -8,6 +8,16 @@ import { GraphPanel } from './components/GraphPanel';
 import { DiffPanel } from './components/DiffPanel';
 import { Loader2 } from 'lucide-react';
 
+// 应用配置的面板字体大小；fontSize <= 0 时跟随 VS Code 面板字体
+const applyFontSize = (fontSize: number) => {
+  const root = document.documentElement;
+  if (fontSize > 0) {
+    root.style.setProperty('--gp-font-size', `${fontSize}px`);
+  } else {
+    root.style.removeProperty('--gp-font-size');
+  }
+};
+
 export const App: React.FC = () => {
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [activeRepo, setActiveRepo] = useState<RepoInfo | null>(null);
@@ -70,6 +80,10 @@ export const App: React.FC = () => {
 
         case 'repoStateUpdate':
           setRepoState(msg.repoState);
+          break;
+
+        case 'fontSizeUpdate':
+          applyFontSize(msg.fontSize);
           break;
 
         case 'commitDetails':
@@ -220,10 +234,10 @@ export const App: React.FC = () => {
 
       {/* 顶部错误提示条 */}
       {errorMessage && (
-        <div className="bg-red-900/60 text-red-200 px-3 py-1 text-xs border-b border-red-700 flex items-center justify-between z-40">
+        <div className="bg-red-900/60 text-red-200 px-3 py-1 text-gp border-b border-red-700 flex items-center justify-between z-40">
           <span>{errorMessage}</span>
           <button
-            className="text-red-400 hover:text-white ml-2 text-[10px]"
+            className="text-red-400 hover:text-white ml-2 text-gp-sm"
             onClick={() => setErrorMessage(null)}
           >
             ✕

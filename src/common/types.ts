@@ -127,6 +127,7 @@ export type ExtensionMessage =
       repoState?: RepoOperationState;
     }
   | { type: 'repoStateUpdate'; repoState: RepoOperationState }
+  | { type: 'fontSizeUpdate'; fontSize: number }
   | { type: 'branchesUpdate'; branches: GitBranch[]; activeBranch: string }
   | { type: 'commitsUpdate'; commits: GitCommit[]; hasMore?: boolean }
   | { type: 'appendCommits'; commits: GitCommit[]; hasMore: boolean }

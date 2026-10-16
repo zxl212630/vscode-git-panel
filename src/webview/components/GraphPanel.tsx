@@ -351,15 +351,15 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-vscode-bg select-none text-[11px] overflow-hidden">
+    <div className="flex flex-col h-full bg-vscode-bg select-none text-gp overflow-hidden">
       {/* 表格头 */}
-      <div className="flex items-center h-[26px] bg-vscode-sideBg border-b border-vscode-border font-semibold text-gray-400 px-2 flex-shrink-0 text-[10px]">
+      <div className="flex items-center h-[26px] bg-vscode-sideBg border-b border-vscode-border font-semibold text-gray-400 px-2 flex-shrink-0 text-gp-sm">
         <div style={{ width: svgWidth }} className="flex-shrink-0">
           Graph
         </div>
         <div className="flex-1 min-w-0 px-2">Description</div>
-        <div className="w-[120px] flex-shrink-0 px-2">Author</div>
-        <div className="w-[110px] flex-shrink-0 px-2 text-right">Date</div>
+        <div className="w-[130px] flex-shrink-0 px-2">Author</div>
+        <div className="w-[135px] flex-shrink-0 px-2 text-right">Date</div>
       </div>
 
       {/* 虚拟滚动列表区 */}
@@ -499,7 +499,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
                   return (
                     <span
                       key={idx}
-                      className={`px-1.5 py-0.2 rounded text-[10px] flex-shrink-0 flex items-center gap-0.5 leading-none ${
+                      className={`px-1.5 py-0.2 rounded text-gp-sm flex-shrink-0 flex items-center gap-0.5 leading-none ${
                         isHead
                           ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50 font-medium'
                           : isTag
@@ -517,12 +517,12 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
               </div>
 
               {/* 作者 */}
-              <div className="w-[120px] flex-shrink-0 px-2 truncate opacity-80 font-mono text-[10px]">
+              <div className="w-[130px] flex-shrink-0 px-2 truncate opacity-80 font-mono text-gp-sm">
                 {commit.authorName}
               </div>
 
               {/* 日期 */}
-              <div className="w-[110px] flex-shrink-0 px-2 text-right opacity-60 font-mono text-[10px]">
+              <div className="w-[135px] flex-shrink-0 px-2 text-right opacity-60 font-mono text-gp-sm">
                 {formatDate(commit.timestamp)}
               </div>
             </div>
@@ -532,14 +532,14 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
         <div style={{ height: bottomPadding }} />
 
         {isLoadingMore && (
-          <div className="flex items-center justify-center py-2.5 text-xs text-vscode-fg opacity-70 gap-2 border-t border-vscode-border/30 bg-vscode-panelBg/30 select-none">
+          <div className="flex items-center justify-center py-2.5 text-gp text-vscode-fg opacity-70 gap-2 border-t border-vscode-border/30 bg-vscode-panelBg/30 select-none">
             <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
             <span>正在加载更多提交记录...</span>
           </div>
         )}
 
         {!hasMore && totalCount > 0 && (
-          <div className="py-2 text-center text-[10px] text-gray-500 italic select-none">
+          <div className="py-2 text-center text-gp-sm text-gray-500 italic select-none">
             已到达提交历史起点 (共 {totalCount} 条)
           </div>
         )}

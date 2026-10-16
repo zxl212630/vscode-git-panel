@@ -6,6 +6,10 @@ export default {
   ],
   theme: {
     extend: {
+      fontSize: {
+        gp: 'var(--gp-font-size, var(--vscode-font-size, 13px))',
+        'gp-sm': 'calc(var(--gp-font-size, var(--vscode-font-size, 13px)) - 1px)',
+      },
       colors: {
         vscode: {
           bg: 'var(--vscode-editor-background, #1e1e1e)',

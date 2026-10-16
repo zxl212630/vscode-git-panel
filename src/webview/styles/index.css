@@ -4,6 +4,12 @@
 
 :root {
   --row-height: 24px;
+  /* 面板字体大小：默认跟随 VS Code 面板字体 (--vscode-font-size)，可通过 git-panel.fontSize 覆盖 */
+  --gp-font-size: var(--vscode-font-size, 13px);
+}
+
+body {
+  font-size: var(--gp-font-size);
 }
 
 /* 覆盖滚动条样式与 VS Code 原生一致 */

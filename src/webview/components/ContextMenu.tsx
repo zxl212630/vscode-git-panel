@@ -59,8 +59,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
       style={style}
       className={
         isNothingHere
-          ? 'px-4 py-1.5 rounded-lg bg-[#2b2d30] border border-[#393b40] shadow-2xl text-xs text-gray-200 font-medium select-none text-center min-w-[90px]'
-          : 'min-w-[200px] bg-vscode-sideBg border border-vscode-border rounded shadow-xl py-1 text-xs select-none'
+          ? 'px-4 py-1.5 rounded-lg bg-[#2b2d30] border border-[#393b40] shadow-2xl text-gp text-gray-200 font-medium select-none text-center min-w-[90px]'
+          : 'min-w-[200px] bg-vscode-sideBg border border-vscode-border rounded shadow-xl py-1 text-gp select-none'
       }
     >
       {isNothingHere ? (
@@ -95,7 +95,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
               ) : null}
               <span className="flex-1 truncate">{item.label}</span>
               {item.shortcut && (
-                <span className="text-[10px] opacity-40 ml-4 font-mono font-normal flex-shrink-0">
+                <span className="text-gp-sm opacity-40 ml-4 font-mono font-normal flex-shrink-0">
                   {item.shortcut}
                 </span>
               )}

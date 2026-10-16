@@ -33,6 +33,17 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
+    // 配置变更时实时更新面板字体大小
+    vscode.workspace.onDidChangeConfiguration(
+      (e) => {
+        if (e.affectsConfiguration('git-panel.fontSize')) {
+          this.postMessage({ type: 'fontSizeUpdate', fontSize: this._getConfiguredFontSize() });
+        }
+      },
+      undefined,
+      this._disposables
+    );
+
     webviewView.webview.onDidReceiveMessage(
       (message: WebviewMessage) => this._handleWebviewMessage(message),
       undefined,
@@ -164,11 +175,44 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
           break;
         }
 
-        case 'deleteBranch':
-          await this.gitService.deleteBranch(msg.branchName, msg.isRemote, msg.force);
-          vscode.window.showInformationMessage(`已删除分支: ${msg.branchName}`);
-          await this.refreshData();
+        case 'deleteBranch': {
+          if (msg.isRemote) {
+            try {
+              await this.gitService.deleteBranch(msg.branchName, true);
+              vscode.window.showInformationMessage(`已删除远程分支: ${msg.branchName}`);
+              await this.refreshData();
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`删除远程分支失败: ${err.message}`);
+            }
+            break;
+          }
+
+          try {
+            // 已合并的分支直接安全删除 (git branch -d)
+            await this.gitService.deleteBranch(msg.branchName, false);
+            vscode.window.showInformationMessage(`已删除分支: ${msg.branchName}`);
+            await this.refreshData();
+          } catch (err: any) {
+            if (!/not fully merged|未完全合并/i.test(err.message || '')) {
+              vscode.window.showErrorMessage(`删除分支失败: ${err.message}`);
+              break;
+            }
+            const force = await vscode.window.showWarningMessage(
+              `分支 '${msg.branchName}' 尚未完全合并，其中的提交将无法通过该分支找回。确认强制删除吗？`,
+              { modal: true },
+              '强制删除 (-D)'
+            );
+            if (force !== '强制删除 (-D)') break;
+            try {
+              await this.gitService.deleteBranch(msg.branchName, false, true);
+              vscode.window.showInformationMessage(`已强制删除分支: ${msg.branchName}`);
+              await this.refreshData();
+            } catch (forceErr: any) {
+              vscode.window.showErrorMessage(`删除分支失败: ${forceErr.message}`);
+            }
+          }
           break;
+        }
 
         case 'mergeBranch':
           try {
@@ -662,6 +706,10 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private _getConfiguredFontSize(): number {
+    return vscode.workspace.getConfiguration('git-panel').get<number>('fontSize', 0) || 0;
+  }
+
   private _getHtmlForWebview(webview: vscode.Webview): string {
     const isProd = fs.existsSync(path.join(this._extensionUri.fsPath, 'dist/webview/assets/index.js'));
 
@@ -686,6 +734,9 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     const nonce = getNonce();
+    const fontSize = this._getConfiguredFontSize();
+    const fontStyleOverride =
+      fontSize > 0 ? `\n  <style>:root { --gp-font-size: ${fontSize}px; }</style>` : '';
 
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -693,10 +744,10 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource};">
-  <link rel="stylesheet" href="${styleUri}">
+  <link rel="stylesheet" href="${styleUri}">${fontStyleOverride}
   <title>Git Panel</title>
 </head>
-<body class="bg-vscode-bg text-vscode-fg overflow-hidden select-none m-0 p-0 font-sans text-xs">
+<body class="bg-vscode-bg text-vscode-fg overflow-hidden select-none m-0 p-0 font-sans">
   <div id="root" class="h-screen w-screen overflow-hidden flex flex-col"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

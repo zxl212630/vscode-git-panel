@@ -131,10 +131,6 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
       nodes.sort((a, b) => {
         if (a.isFolder && !b.isFolder) return -1;
         if (!a.isFolder && b.isFolder) return 1;
-        if (!a.isFolder && !b.isFolder) {
-          if (a.branch?.isHead) return -1;
-          if (b.branch?.isHead) return 1;
-        }
         return a.name.localeCompare(b.name);
       });
 
@@ -255,13 +251,11 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
           label: 'Delete',
           danger: true,
           onClick: () => {
-            if (confirm(`确认要删除远程分支 '${branch.name}' 吗？`)) {
-              vscode.postMessage({
-                type: 'deleteBranch',
-                branchName: branch.name,
-                isRemote: true,
-              });
-            }
+            vscode.postMessage({
+              type: 'deleteBranch',
+              branchName: branch.name,
+              isRemote: true,
+            });
           },
         },
       ];
@@ -413,13 +407,11 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
         label: 'Delete',
         danger: true,
         onClick: () => {
-          if (confirm(`确认要删除分支 '${branch.name}' 吗？`)) {
-            vscode.postMessage({
-              type: 'deleteBranch',
-              branchName: branch.name,
-              isRemote: false,
-            });
-          }
+          vscode.postMessage({
+            type: 'deleteBranch',
+            branchName: branch.name,
+            isRemote: false,
+          });
         },
       },
     ];
@@ -447,7 +439,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
               <Folder className="w-3.5 h-3.5 text-blue-400 opacity-80 flex-shrink-0" />
             )}
             <span className="truncate flex-1 font-medium">{node.name}</span>
-            <span className="text-[10px] opacity-40 ml-1 flex-shrink-0">{node.totalBranches}</span>
+            <span className="text-gp-sm opacity-40 ml-1 flex-shrink-0">{node.totalBranches}</span>
           </div>
           {expanded && (
             <div>{node.children.map((child) => renderTreeNode(child, depth + 1))}</div>
@@ -503,7 +495,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
 
   return (
     <div
-      className="flex flex-col h-full bg-vscode-sideBg select-none text-[11px]"
+      className="flex flex-col h-full bg-vscode-sideBg select-none text-gp"
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* 顶部多仓库切换（自定义下拉组件，完美适配主题与精准层级缩进，防止右边被遮挡） */}
@@ -514,7 +506,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
             <button
               type="button"
               onClick={() => setIsRepoDropdownOpen(!isRepoDropdownOpen)}
-              className="w-full flex items-center justify-between bg-vscode-inputBg text-vscode-inputFg border border-vscode-inputBorder hover:border-vscode-activeBorder rounded px-2 py-0.5 text-[11px] outline-none"
+              className="w-full flex items-center justify-between bg-vscode-inputBg text-vscode-inputFg border border-vscode-inputBorder hover:border-vscode-activeBorder rounded px-2 py-0.5 text-gp outline-none"
               title={activeRepo ? `${activeRepo.name} (${activeRepo.path})` : '选择仓库'}
             >
               <span className="truncate flex-1 text-left font-mono">
@@ -524,7 +516,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
             </button>
 
             {isRepoDropdownOpen && (
-              <div className="absolute left-0 top-full mt-1 w-full min-w-[200px] max-w-[320px] max-h-64 overflow-y-auto bg-vscode-sideBg border border-vscode-border rounded shadow-2xl z-50 py-1 text-xs select-none">
+              <div className="absolute left-0 top-full mt-1 w-full min-w-[200px] max-w-[320px] max-h-64 overflow-y-auto bg-vscode-sideBg border border-vscode-border rounded shadow-2xl z-50 py-1 text-gp select-none">
                 {repos.map((r) => {
                   const isSelected = r.path === activeRepo?.path;
                   const depth = r.depth || 0;
@@ -532,7 +524,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
                     <div
                       key={r.path}
                       style={{ paddingLeft: `${depth * 14 + 6}px` }}
-                      className={`flex items-center gap-1.5 px-2 py-1 cursor-pointer hover:bg-vscode-hoverBg text-[11px] truncate ${
+                      className={`flex items-center gap-1.5 px-2 py-1 cursor-pointer hover:bg-vscode-hoverBg text-gp truncate ${
                         isSelected ? 'bg-vscode-activeBg text-vscode-activeFg font-semibold' : 'text-vscode-fg'
                       }`}
                       onClick={() => {
@@ -567,7 +559,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
           <Search className="w-3 h-3 opacity-50 mr-1 flex-shrink-0" />
           <input
             type="text"
-            className="w-full bg-transparent outline-none text-[11px] placeholder:opacity-50"
+            className="w-full bg-transparent outline-none text-gp placeholder:opacity-50"
             placeholder="搜索分支..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -581,7 +573,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
         {currentHeadBranch && (
           <div className="mb-1">
             <div
-              className="px-2 py-1 text-[10px] font-semibold tracking-wider text-gray-400 uppercase"
+              className="px-2 py-1 text-gp-sm font-semibold tracking-wider text-gray-400 uppercase"
               onContextMenu={handleFolderContextMenu}
             >
               HEAD (Current Branch)
@@ -604,7 +596,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
         {/* Local 分支分类 */}
         <div className="mb-1">
           <div
-            className="flex items-center px-2 py-1 gap-1 cursor-pointer text-[10px] font-semibold tracking-wider text-gray-400 hover:text-vscode-fg uppercase"
+            className="flex items-center px-2 py-1 gap-1 cursor-pointer text-gp-sm font-semibold tracking-wider text-gray-400 hover:text-vscode-fg uppercase"
             onClick={() => setIsLocalExpanded(!isLocalExpanded)}
             onContextMenu={handleFolderContextMenu}
           >
@@ -614,14 +606,14 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
               <ChevronRight className="w-3 h-3 opacity-70" />
             )}
             <span>Local</span>
-            <span className="ml-auto text-[10px] opacity-50">{localBranches.length}</span>
+            <span className="ml-auto text-gp-sm opacity-50">{localBranches.length}</span>
           </div>
 
           {isLocalExpanded && (
             <div className="pl-1">
               {localTree.map((node) => renderTreeNode(node, 0))}
               {localBranches.length === 0 && (
-                <div className="px-3 py-1 text-gray-500 italic text-[10px]">无匹配分支</div>
+                <div className="px-3 py-1 text-gray-500 italic text-gp-sm">无匹配分支</div>
               )}
             </div>
           )}
@@ -630,7 +622,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
         {/* Remote 分支分类 */}
         <div className="mb-1">
           <div
-            className="flex items-center px-2 py-1 gap-1 cursor-pointer text-[10px] font-semibold tracking-wider text-gray-400 hover:text-vscode-fg uppercase"
+            className="flex items-center px-2 py-1 gap-1 cursor-pointer text-gp-sm font-semibold tracking-wider text-gray-400 hover:text-vscode-fg uppercase"
             onClick={() => setIsRemoteExpanded(!isRemoteExpanded)}
             onContextMenu={handleFolderContextMenu}
           >
@@ -640,14 +632,14 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
               <ChevronRight className="w-3 h-3 opacity-70" />
             )}
             <span>Remote</span>
-            <span className="ml-auto text-[10px] opacity-50">{remoteBranches.length}</span>
+            <span className="ml-auto text-gp-sm opacity-50">{remoteBranches.length}</span>
           </div>
 
           {isRemoteExpanded && (
             <div className="pl-1">
               {remoteTree.map((node) => renderTreeNode(node, 0))}
               {remoteBranches.length === 0 && (
-                <div className="px-3 py-1 text-gray-500 italic text-[10px]">无远程分支</div>
+                <div className="px-3 py-1 text-gray-500 italic text-gp-sm">无远程分支</div>
               )}
             </div>
           )}

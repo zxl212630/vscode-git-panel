@@ -141,15 +141,15 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
   const renderStatusBadge = (status: GitFileStatus) => {
     switch (status) {
       case 'A':
-        return <span className="text-green-400 font-mono text-[10px] font-bold">A</span>;
+        return <span className="text-green-400 font-mono text-gp-sm font-bold">A</span>;
       case 'M':
-        return <span className="text-blue-400 font-mono text-[10px] font-bold">M</span>;
+        return <span className="text-blue-400 font-mono text-gp-sm font-bold">M</span>;
       case 'D':
-        return <span className="text-red-400 font-mono text-[10px] font-bold">D</span>;
+        return <span className="text-red-400 font-mono text-gp-sm font-bold">D</span>;
       case 'R':
-        return <span className="text-purple-400 font-mono text-[10px] font-bold">R</span>;
+        return <span className="text-purple-400 font-mono text-gp-sm font-bold">R</span>;
       default:
-        return <span className="text-gray-400 font-mono text-[10px]">{status}</span>;
+        return <span className="text-gray-400 font-mono text-gp-sm">{status}</span>;
     }
   };
 
@@ -194,7 +194,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
         title={`点击在主编辑区查看差异: ${node.file.path}`}
       >
         <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-        <span className="truncate flex-1 font-mono text-[11px]">{node.name}</span>
+        <span className="truncate flex-1 font-mono text-gp">{node.name}</span>
         {node.file.oldPath && (
           <span className="text-[9px] text-gray-500 truncate max-w-[80px]">
             from {node.file.oldPath}
@@ -213,7 +213,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
 
   if (!compareDetail && !commitDetail) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-500 italic p-4 text-[11px]">
+      <div className="flex flex-col items-center justify-center h-full text-gray-500 italic p-4 text-gp">
         {isLoading ? '加载中...' : '请在中间列表中选择一个 Commit 或在左侧分支右键进行对比'}
       </div>
     );
@@ -222,7 +222,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
   const filesCount = activeFiles.length;
 
   return (
-    <div className="flex flex-col h-full bg-vscode-sideBg select-none text-[11px] overflow-hidden">
+    <div className="flex flex-col h-full bg-vscode-sideBg select-none text-gp overflow-hidden">
       {/* 对比模式横幅 */}
       {compareDetail && (
         <div className="flex items-center justify-between px-2.5 py-1.5 bg-blue-950/40 border-b border-blue-500/40 text-blue-300 flex-shrink-0">
@@ -236,7 +236,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
           </div>
           <button
             onClick={onExitCompare}
-            className="px-2 py-0.5 text-[10px] bg-vscode-inputBg hover:bg-vscode-hoverBg border border-vscode-border rounded text-vscode-fg flex-shrink-0 ml-2"
+            className="px-2 py-0.5 text-gp-sm bg-vscode-inputBg hover:bg-vscode-hoverBg border border-vscode-border rounded text-vscode-fg flex-shrink-0 ml-2"
             title="退出对比模式并返回提交详情"
           >
             退出对比
@@ -247,7 +247,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
       {/* 顶部标题与视图切换 */}
       <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-vscode-border bg-vscode-sideBg flex-shrink-0">
         <span className="font-semibold text-gray-300">
-          Changes <span className="opacity-60 text-[10px]">({filesCount} files)</span>
+          Changes <span className="opacity-60 text-gp-sm">({filesCount} files)</span>
         </span>
         <div className="flex items-center gap-1">
           <button
@@ -274,7 +274,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
       {/* 文件变更列表区 */}
       <div className="flex-1 overflow-y-auto py-1">
         {filesCount === 0 ? (
-          <div className="p-3 text-gray-500 italic text-[10px]">没有检测到任何文件变更</div>
+          <div className="p-3 text-gray-500 italic text-gp-sm">没有检测到任何文件变更</div>
         ) : viewMode === 'tree' ? (
           <div>{fileTree.map((node) => renderTreeNode(node))}</div>
         ) : (
@@ -287,7 +287,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
                 title={`点击在主编辑区查看差异: ${file.path}`}
               >
                 <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <span className="truncate flex-1 font-mono text-[11px]">{file.path}</span>
+                <span className="truncate flex-1 font-mono text-gp">{file.path}</span>
                 {file.oldPath && (
                   <span className="text-[9px] text-gray-500 truncate max-w-[100px]">
                     from {file.oldPath}
@@ -302,7 +302,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
 
       {/* 下部：元数据信息卡片 */}
       {compareDetail ? (
-        <div className="border-t border-vscode-border p-2 bg-vscode-bg/40 flex-shrink-0 text-[10px] text-gray-400 font-mono">
+        <div className="border-t border-vscode-border p-2 bg-vscode-bg/40 flex-shrink-0 text-gp-sm text-gray-400 font-mono">
           <div className="flex items-center gap-1.5 text-blue-300">
             <GitCompare className="w-3 h-3 flex-shrink-0" />
             <span className="font-semibold">
@@ -316,19 +316,19 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
           </div>
         </div>
       ) : commitDetail ? (
-        <div className="border-t border-vscode-border p-2.5 bg-vscode-bg/50 flex-shrink-0 max-h-[45%] overflow-y-auto flex flex-col gap-1.5 text-[11px]">
+        <div className="border-t border-vscode-border p-2.5 bg-vscode-bg/50 flex-shrink-0 max-h-[45%] overflow-y-auto flex flex-col gap-1.5 text-gp">
           {/* Commit Message */}
           <div className="font-semibold text-vscode-fg whitespace-pre-wrap break-words leading-tight">
             {commitDetail.subject}
           </div>
           {commitDetail.body && (
-            <div className="text-gray-400 text-[10px] whitespace-pre-wrap break-words font-mono bg-vscode-sideBg/50 p-1.5 rounded border border-vscode-border/50">
+            <div className="text-gray-400 text-gp-sm whitespace-pre-wrap break-words font-mono bg-vscode-sideBg/50 p-1.5 rounded border border-vscode-border/50">
               {commitDetail.body}
             </div>
           )}
 
           {/* 元数据行 */}
-          <div className="flex flex-col gap-1 text-[10px] text-gray-400 pt-1 border-t border-vscode-border/40 font-mono">
+          <div className="flex flex-col gap-1 text-gp-sm text-gray-400 pt-1 border-t border-vscode-border/40 font-mono">
             <div className="flex items-center gap-1.5">
               <Hash className="w-3 h-3 opacity-60 flex-shrink-0" />
               <span

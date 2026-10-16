@@ -44,7 +44,17 @@
         "command": "git-panel.openInPanel",
         "title": "Git Panel: Focus Git Panel"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Git Panel",
+      "properties": {
+        "git-panel.fontSize": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Git Panel 面板字体大小（px）。设为 `0` 时跟随 VS Code 面板字体大小（`--vscode-font-size`，默认 13px，与源代码管理面板一致）。"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
