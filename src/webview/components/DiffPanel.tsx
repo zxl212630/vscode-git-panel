@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { GitCommitDetail, GitChangedFile, GitFileStatus } from '../../common/types';
+import { GitCommitDetail, GitChangedFile, GitFileStatus, CompareDetail } from '../../common/types';
 import { vscode } from '../utils/vscode';
 import {
   FileText,
@@ -9,7 +9,7 @@ import {
   Network,
   ChevronDown,
   ChevronRight,
-  GitCommit,
+  GitCompare,
   User,
   Clock,
   Hash,
@@ -17,7 +17,9 @@ import {
 
 interface DiffPanelProps {
   commitDetail: GitCommitDetail | null;
+  compareDetail: CompareDetail | null;
   isLoading: boolean;
+  onExitCompare: () => void;
 }
 
 interface TreeNode {
@@ -28,13 +30,24 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
-export const DiffPanel: React.FC<DiffPanelProps> = ({ commitDetail, isLoading }) => {
+export const DiffPanel: React.FC<DiffPanelProps> = ({
+  commitDetail,
+  compareDetail,
+  isLoading,
+  onExitCompare,
+}) => {
   const [viewMode, setViewMode] = useState<'tree' | 'flat'>('tree');
   const [collapsedDirs, setCollapsedDirs] = useState<Record<string, boolean>>({});
 
+  const activeFiles = useMemo(() => {
+    if (compareDetail) return compareDetail.files;
+    if (commitDetail) return commitDetail.files;
+    return [];
+  }, [compareDetail, commitDetail]);
+
   // 构造文件树
   const fileTree = useMemo(() => {
-    if (!commitDetail || !commitDetail.files) return [];
+    if (!activeFiles || activeFiles.length === 0) return [];
 
     const root: TreeNode = {
       name: 'root',
@@ -43,7 +56,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({ commitDetail, isLoading })
       children: [],
     };
 
-    for (const file of commitDetail.files) {
+    for (const file of activeFiles) {
       const parts = file.path.split('/');
       let current = root;
 
@@ -92,7 +105,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({ commitDetail, isLoading })
 
     sortNodes(root.children);
     return root.children || [];
-  }, [commitDetail]);
+  }, [activeFiles]);
 
   const toggleDir = (dirPath: string) => {
     setCollapsedDirs((prev) => ({
@@ -102,6 +115,19 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({ commitDetail, isLoading })
   };
 
   const handleOpenFileDiff = (file: GitChangedFile) => {
+    if (compareDetail) {
+      vscode.postMessage({
+        type: 'openCompareDiff',
+        compareType: compareDetail.compareType,
+        baseBranch: compareDetail.baseBranch,
+        targetBranch: compareDetail.targetBranch,
+        filePath: file.path,
+        oldPath: file.oldPath,
+        status: file.status,
+      });
+      return;
+    }
+
     if (!commitDetail) return;
     vscode.postMessage({
       type: 'openDiff',
@@ -185,18 +211,39 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({ commitDetail, isLoading })
     return d.toLocaleString('zh-CN', { hour12: false });
   };
 
-  if (!commitDetail) {
+  if (!compareDetail && !commitDetail) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-500 italic p-4 text-[11px]">
-        {isLoading ? '加载中...' : '请在中间列表中选择一个 Commit'}
+        {isLoading ? '加载中...' : '请在中间列表中选择一个 Commit 或在左侧分支右键进行对比'}
       </div>
     );
   }
 
-  const filesCount = commitDetail.files?.length || 0;
+  const filesCount = activeFiles.length;
 
   return (
     <div className="flex flex-col h-full bg-vscode-sideBg select-none text-[11px] overflow-hidden">
+      {/* 对比模式横幅 */}
+      {compareDetail && (
+        <div className="flex items-center justify-between px-2.5 py-1.5 bg-blue-950/40 border-b border-blue-500/40 text-blue-300 flex-shrink-0">
+          <div className="flex items-center gap-1.5 truncate">
+            <GitCompare className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+            <span className="font-semibold truncate">
+              {compareDetail.compareType === 'branch'
+                ? `对比: ${compareDetail.baseBranch} ↔ ${compareDetail.targetBranch}`
+                : `工作区对比: ${compareDetail.baseBranch}`}
+            </span>
+          </div>
+          <button
+            onClick={onExitCompare}
+            className="px-2 py-0.5 text-[10px] bg-vscode-inputBg hover:bg-vscode-hoverBg border border-vscode-border rounded text-vscode-fg flex-shrink-0 ml-2"
+            title="退出对比模式并返回提交详情"
+          >
+            退出对比
+          </button>
+        </div>
+      )}
+
       {/* 顶部标题与视图切换 */}
       <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-vscode-border bg-vscode-sideBg flex-shrink-0">
         <span className="font-semibold text-gray-300">
@@ -227,12 +274,12 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({ commitDetail, isLoading })
       {/* 文件变更列表区 */}
       <div className="flex-1 overflow-y-auto py-1">
         {filesCount === 0 ? (
-          <div className="p-3 text-gray-500 italic text-[10px]">该提交没有文件变更</div>
+          <div className="p-3 text-gray-500 italic text-[10px]">没有检测到任何文件变更</div>
         ) : viewMode === 'tree' ? (
           <div>{fileTree.map((node) => renderTreeNode(node))}</div>
         ) : (
           <div className="px-1">
-            {commitDetail.files.map((file) => (
+            {activeFiles.map((file) => (
               <div
                 key={file.path}
                 className="flex items-center px-2 py-0.5 gap-1.5 cursor-pointer hover:bg-vscode-hoverBg rounded-sm text-vscode-fg"
@@ -253,55 +300,71 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({ commitDetail, isLoading })
         )}
       </div>
 
-      {/* 下部：Commit 详情元数据信息卡片 */}
-      <div className="border-t border-vscode-border p-2.5 bg-vscode-bg/50 flex-shrink-0 max-h-[45%] overflow-y-auto flex flex-col gap-1.5 text-[11px]">
-        {/* Commit Message */}
-        <div className="font-semibold text-vscode-fg whitespace-pre-wrap break-words leading-tight">
-          {commitDetail.subject}
+      {/* 下部：元数据信息卡片 */}
+      {compareDetail ? (
+        <div className="border-t border-vscode-border p-2 bg-vscode-bg/40 flex-shrink-0 text-[10px] text-gray-400 font-mono">
+          <div className="flex items-center gap-1.5 text-blue-300">
+            <GitCompare className="w-3 h-3 flex-shrink-0" />
+            <span className="font-semibold">
+              {compareDetail.compareType === 'branch'
+                ? `分支对比: ${compareDetail.baseBranch} ↔ ${compareDetail.targetBranch}`
+                : `分支比对工作区: ${compareDetail.baseBranch} ↔ Working Tree`}
+            </span>
+          </div>
+          <div className="pt-1 opacity-75">
+            共 {filesCount} 个文件变动，点击上方文件在主编辑区对比差异。
+          </div>
         </div>
-        {commitDetail.body && (
-          <div className="text-gray-400 text-[10px] whitespace-pre-wrap break-words font-mono bg-vscode-sideBg/50 p-1.5 rounded border border-vscode-border/50">
-            {commitDetail.body}
+      ) : commitDetail ? (
+        <div className="border-t border-vscode-border p-2.5 bg-vscode-bg/50 flex-shrink-0 max-h-[45%] overflow-y-auto flex flex-col gap-1.5 text-[11px]">
+          {/* Commit Message */}
+          <div className="font-semibold text-vscode-fg whitespace-pre-wrap break-words leading-tight">
+            {commitDetail.subject}
           </div>
-        )}
-
-        {/* 元数据行 */}
-        <div className="flex flex-col gap-1 text-[10px] text-gray-400 pt-1 border-t border-vscode-border/40 font-mono">
-          <div className="flex items-center gap-1.5">
-            <Hash className="w-3 h-3 opacity-60 flex-shrink-0" />
-            <span
-              className="text-blue-400 hover:underline cursor-pointer truncate"
-              onClick={() => navigator.clipboard.writeText(commitDetail.hash)}
-              title="点击复制完整哈希"
-            >
-              {commitDetail.hash}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <User className="w-3 h-3 opacity-60 flex-shrink-0" />
-            <span className="truncate">
-              {commitDetail.authorName} &lt;{commitDetail.authorEmail}&gt;
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <Clock className="w-3 h-3 opacity-60 flex-shrink-0" />
-            <span>{formatDate(commitDetail.timestamp)}</span>
-          </div>
-
-          {commitDetail.refs && commitDetail.refs.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-              <span className="opacity-60 text-[9px]">Branches/Tags:</span>
-              {commitDetail.refs.map((r, i) => (
-                <span key={i} className="px-1 py-0.2 bg-blue-500/20 text-blue-300 rounded text-[9px]">
-                  {r}
-                </span>
-              ))}
+          {commitDetail.body && (
+            <div className="text-gray-400 text-[10px] whitespace-pre-wrap break-words font-mono bg-vscode-sideBg/50 p-1.5 rounded border border-vscode-border/50">
+              {commitDetail.body}
             </div>
           )}
+
+          {/* 元数据行 */}
+          <div className="flex flex-col gap-1 text-[10px] text-gray-400 pt-1 border-t border-vscode-border/40 font-mono">
+            <div className="flex items-center gap-1.5">
+              <Hash className="w-3 h-3 opacity-60 flex-shrink-0" />
+              <span
+                className="text-blue-400 hover:underline cursor-pointer truncate"
+                onClick={() => navigator.clipboard.writeText(commitDetail.hash)}
+                title="点击复制完整哈希"
+              >
+                {commitDetail.hash}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <User className="w-3 h-3 opacity-60 flex-shrink-0" />
+              <span className="truncate">
+                {commitDetail.authorName} &lt;{commitDetail.authorEmail}&gt;
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3 h-3 opacity-60 flex-shrink-0" />
+              <span>{formatDate(commitDetail.timestamp)}</span>
+            </div>
+
+            {commitDetail.refs && commitDetail.refs.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                <span className="opacity-60 text-[9px]">Branches/Tags:</span>
+                {commitDetail.refs.map((r, i) => (
+                  <span key={i} className="px-1 py-0.2 bg-blue-500/20 text-blue-300 rounded text-[9px]">
+                    {r}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 };

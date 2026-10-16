@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { GitBranch, GitCommit, GitCommitDetail, RepoInfo, ExtensionMessage } from '../common/types';
+import { GitBranch, GitCommit, GitCommitDetail, RepoInfo, ExtensionMessage, CompareDetail } from '../common/types';
 import { vscode } from './utils/vscode';
 import { SplitPane } from './components/SplitPane';
 import { BranchPanel } from './components/BranchPanel';
@@ -15,6 +15,7 @@ export const App: React.FC = () => {
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<GitCommit | null>(null);
   const [selectedCommitDetail, setSelectedCommitDetail] = useState<GitCommitDetail | null>(null);
+  const [compareDetail, setCompareDetail] = useState<CompareDetail | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(true);
@@ -46,6 +47,7 @@ export const App: React.FC = () => {
           setActiveRepo(msg.activeRepo);
           setBranches(msg.branches);
           setCommits(msg.commits);
+          setCompareDetail(null);
           setHasMore(msg.hasMore ?? false);
           setIsLoadingMore(false);
           if (msg.commits.length > 0) {
@@ -61,6 +63,15 @@ export const App: React.FC = () => {
         case 'commitDetails':
           setSelectedCommitDetail(msg.detail);
           setIsLoading(false);
+          break;
+
+        case 'compareResult':
+          setCompareDetail(msg.detail);
+          setIsLoading(false);
+          break;
+
+        case 'clearCompare':
+          setCompareDetail(null);
           break;
 
         case 'commitsUpdate':
@@ -114,6 +125,7 @@ export const App: React.FC = () => {
 
   const handleSwitchRepo = useCallback((repoPath: string) => {
     setIsLoading(true);
+    setCompareDetail(null);
     vscode.postMessage({ type: 'switchRepo', repoPath });
   }, []);
 
@@ -124,12 +136,45 @@ export const App: React.FC = () => {
     vscode.postMessage({ type: 'refresh' });
   }, []);
 
-  const handleSelectBranch = useCallback((branch: string | null) => {
-    setSelectedBranch(branch);
+  const [toolbarBranchFilter, setToolbarBranchFilter] = useState<string | null>(null);
+
+  const handleToolbarFilterBranch = useCallback((branch: string | null) => {
+    setToolbarBranchFilter(branch);
     setIsLoading(true);
     setHasMore(true);
     setIsLoadingMore(false);
+    setCompareDetail(null);
     vscode.postMessage({ type: 'filterBranch', branch });
+  }, []);
+
+  const handleBranchClick = useCallback(
+    (branch: GitBranch) => {
+      setSelectedBranch(branch.name);
+      // 查找该分支最新的 Commit 并跳转定位，而不是过滤提交列表
+      let targetCommit = commits.find((c) => c.hash === branch.commitHash);
+      if (!targetCommit) {
+        targetCommit = commits.find((c) =>
+          c.refs.some(
+            (r) =>
+              r === branch.name ||
+              r === `HEAD -> ${branch.name}` ||
+              r === `origin/${branch.name}` ||
+              r.includes(`/${branch.name}`)
+          )
+        );
+      }
+      if (targetCommit) {
+        handleSelectCommit(targetCommit);
+      } else if (branch.commitHash) {
+        vscode.postMessage({ type: 'selectCommit', commitHash: branch.commitHash });
+      }
+    },
+    [commits, handleSelectCommit]
+  );
+
+  const handleExitCompare = useCallback(() => {
+    setCompareDetail(null);
+    vscode.postMessage({ type: 'exitCompare' });
   }, []);
 
   const handleLoadMore = useCallback(() => {
@@ -139,9 +184,9 @@ export const App: React.FC = () => {
       type: 'loadMoreCommits',
       skip: commits.length,
       limit: 500,
-      branch: selectedBranch,
+      branch: toolbarBranchFilter,
     });
-  }, [isLoading, isLoadingMore, hasMore, commits.length, selectedBranch]);
+  }, [isLoading, isLoadingMore, hasMore, commits.length, toolbarBranchFilter]);
 
   const handleJumpToHead = useCallback(() => {
     const headCommit = commits.find((c) => c.refs.some((r) => r.includes('HEAD')));
@@ -151,10 +196,19 @@ export const App: React.FC = () => {
   }, [commits, handleSelectCommit]);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-vscode-bg text-vscode-fg">
-      {/* 顶部轻量加载与错误提示条 */}
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-vscode-bg text-vscode-fg relative">
+      {/* 顶部轻量加载指示条（绝对定位，绝不改变布局高度，杜绝抖动） */}
+      <div
+        className={`absolute top-0 left-0 right-0 h-[2px] z-50 pointer-events-none overflow-hidden transition-opacity duration-200 ${
+          isLoading ? 'opacity-100 bg-blue-500/20' : 'opacity-0'
+        }`}
+      >
+        {isLoading && <div className="h-full bg-vscode-buttonBg animate-pulse w-full" />}
+      </div>
+
+      {/* 顶部错误提示条 */}
       {errorMessage && (
-        <div className="bg-red-900/60 text-red-200 px-3 py-1 text-xs border-b border-red-700 flex items-center justify-between">
+        <div className="bg-red-900/60 text-red-200 px-3 py-1 text-xs border-b border-red-700 flex items-center justify-between z-40">
           <span>{errorMessage}</span>
           <button
             className="text-red-400 hover:text-white ml-2 text-[10px]"
@@ -162,12 +216,6 @@ export const App: React.FC = () => {
           >
             ✕
           </button>
-        </div>
-      )}
-
-      {isLoading && (
-        <div className="h-[2px] w-full bg-blue-500/20 overflow-hidden relative">
-          <div className="h-full bg-vscode-buttonBg animate-pulse w-full" />
         </div>
       )}
 
@@ -180,7 +228,7 @@ export const App: React.FC = () => {
               activeRepo={activeRepo}
               branches={branches}
               selectedBranchName={selectedBranch}
-              onSelectBranch={handleSelectBranch}
+              onSelectBranch={handleBranchClick}
               onSwitchRepo={handleSwitchRepo}
             />
           }
@@ -193,8 +241,8 @@ export const App: React.FC = () => {
                 onToggleRegex={() => setIsRegex(!isRegex)}
                 isCaseSensitive={isCaseSensitive}
                 onToggleCaseSensitive={() => setIsCaseSensitive(!isCaseSensitive)}
-                selectedBranch={selectedBranch}
-                onSelectBranch={handleSelectBranch}
+                selectedBranch={toolbarBranchFilter}
+                onSelectBranch={handleToolbarFilterBranch}
                 branches={branches}
                 authors={authors}
                 selectedAuthor={selectedAuthor}
@@ -211,7 +259,7 @@ export const App: React.FC = () => {
                   branches={branches}
                   selectedHash={selectedCommit?.hash || null}
                   onSelectCommit={handleSelectCommit}
-                  filteredBranch={selectedBranch}
+                  filteredBranch={toolbarBranchFilter}
                   filteredAuthor={selectedAuthor}
                   searchFilter={searchFilter}
                   isRegex={isRegex}
@@ -223,7 +271,14 @@ export const App: React.FC = () => {
               </div>
             </div>
           }
-          right={<DiffPanel commitDetail={selectedCommitDetail} isLoading={isLoading} />}
+          right={
+            <DiffPanel
+              commitDetail={selectedCommitDetail}
+              compareDetail={compareDetail}
+              isLoading={isLoading}
+              onExitCompare={handleExitCompare}
+            />
+          }
         />
       </div>
     </div>

@@ -8,19 +8,19 @@ export class GitContentProvider implements vscode.TextDocumentContentProvider {
 
   constructor(private gitService: GitService) {}
 
-  public static createUri(commitHash: string, filePath: string): vscode.Uri {
-    // 构造 URI: git-panel-blob://commitHash/relativePath
+  public static createUri(ref: string, filePath: string): vscode.Uri {
+    // 构造 URI: git-panel-blob://encodeURIComponent(ref)/relativePath
     const safePath = filePath.startsWith('/') ? filePath : `/${filePath}`;
     return vscode.Uri.from({
       scheme: GitContentProvider.scheme,
-      authority: commitHash,
+      authority: encodeURIComponent(ref),
       path: safePath,
-      query: `ref=${commitHash}`,
+      query: `ref=${encodeURIComponent(ref)}`,
     });
   }
 
   public async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
-    const commitHash = uri.authority;
+    const commitHash = decodeURIComponent(uri.authority);
     // 去掉开头的 /
     const filePath = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
 

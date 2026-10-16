@@ -196,6 +196,24 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
     }
   }, [endIndex, totalCount, hasMore, isLoadingMore, onLoadMore]);
 
+  // 6. 监听 selectedHash 变动：若目标提交不在当前视口内，平滑滚动至该提交所在行
+  useEffect(() => {
+    if (!selectedHash || !containerRef.current) return;
+    const index = graphNodes.findIndex((n) => n.commit.hash === selectedHash);
+    if (index !== -1) {
+      const el = containerRef.current;
+      const targetTop = index * ROW_HEIGHT;
+      const isVisible =
+        targetTop >= el.scrollTop && targetTop <= el.scrollTop + el.clientHeight - ROW_HEIGHT;
+      if (!isVisible) {
+        el.scrollTo({
+          top: Math.max(0, targetTop - Math.floor(el.clientHeight / 3)),
+          behavior: 'smooth',
+        });
+      }
+    }
+  }, [selectedHash, graphNodes]);
+
   const handleRowContextMenu = (e: React.MouseEvent, commit: GitCommit) => {
     e.preventDefault();
     e.stopPropagation();

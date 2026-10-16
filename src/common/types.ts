@@ -38,6 +38,10 @@ export interface RepoInfo {
   name: string;
   path: string;
   currentBranch: string;
+  displayName?: string;
+  depth?: number;
+  subRelPath?: string;
+  isSubmodule?: boolean;
 }
 
 // Graph Lane and Visual Node types
@@ -56,6 +60,13 @@ export interface GraphRoute {
   color: string;
 }
 
+export interface CompareDetail {
+  compareType: 'branch' | 'workingTree';
+  baseBranch: string;
+  targetBranch?: string;
+  files: GitChangedFile[];
+}
+
 // RPC Messages
 export type WebviewMessage =
   | { type: 'ready' }
@@ -64,16 +75,32 @@ export type WebviewMessage =
   | { type: 'selectCommit'; commitHash: string }
   | { type: 'openDiff'; commitHash: string; filePath: string; oldPath?: string; status: GitFileStatus }
   | { type: 'checkoutBranch'; branchName: string; isRemote: boolean }
+  | { type: 'checkoutAndRebase'; branchName: string; ontoBranch: string }
   | { type: 'createBranch'; branchName: string; targetHash: string }
+  | { type: 'promptCreateBranch'; baseBranch: string; targetHash: string }
+  | { type: 'promptRenameBranch'; branchName: string }
   | { type: 'deleteBranch'; branchName: string; isRemote: boolean; force?: boolean }
   | { type: 'mergeBranch'; branchName: string }
   | { type: 'rebaseBranch'; branchName: string }
   | { type: 'pushBranch'; branchName: string; remote?: string }
+  | { type: 'updateBranch' }
   | { type: 'cherryPickCommit'; commitHash: string }
   | { type: 'resetCommit'; commitHash: string; mode: 'soft' | 'mixed' | 'hard' }
   | { type: 'revertCommit'; commitHash: string }
   | { type: 'filterBranch'; branch: string | null }
   | { type: 'compareBranches'; baseBranch: string; compareBranch: string }
+  | { type: 'compareBranchWithHead'; branchName: string }
+  | { type: 'compareWithWorkingTree'; branchName: string }
+  | {
+      type: 'openCompareDiff';
+      compareType: 'branch' | 'workingTree';
+      baseBranch: string;
+      targetBranch?: string;
+      filePath: string;
+      oldPath?: string;
+      status: GitFileStatus;
+    }
+  | { type: 'exitCompare' }
   | { type: 'loadMoreCommits'; skip: number; limit?: number; branch?: string | null };
 
 export type ExtensionMessage =
@@ -90,6 +117,8 @@ export type ExtensionMessage =
   | { type: 'commitsUpdate'; commits: GitCommit[]; hasMore?: boolean }
   | { type: 'appendCommits'; commits: GitCommit[]; hasMore: boolean }
   | { type: 'commitDetails'; detail: GitCommitDetail }
+  | { type: 'compareResult'; detail: CompareDetail }
+  | { type: 'clearCompare' }
   | { type: 'loading'; isLoading: boolean; message?: string }
   | { type: 'error'; message: string }
   | { type: 'info'; message: string };

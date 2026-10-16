@@ -99,11 +99,68 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
           await this.refreshData();
           break;
 
+        case 'checkoutAndRebase':
+          try {
+            await this.gitService.checkoutAndRebase(msg.branchName, msg.ontoBranch);
+            vscode.window.showInformationMessage(`成功检出 '${msg.branchName}' 并变基到 '${msg.ontoBranch}'`);
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`检出并变基失败: ${err.message}`);
+          }
+          await this.refreshData();
+          break;
+
         case 'createBranch':
           await this.gitService.createBranch(msg.branchName, msg.targetHash);
           vscode.window.showInformationMessage(`成功创建并检出分支: ${msg.branchName}`);
           await this.refreshData();
           break;
+
+        case 'promptCreateBranch': {
+          const newName = await vscode.window.showInputBox({
+            title: `基于 '${msg.baseBranch}' 创建新分支`,
+            prompt: '请输入新分支名称',
+            placeHolder: '例如 feature/my-feature',
+            validateInput: (value) => {
+              if (!value || !value.trim()) return '分支名称不能为空';
+              if (/\s/.test(value)) return '分支名称不能包含空格';
+              return null;
+            },
+          });
+          if (newName && newName.trim()) {
+            try {
+              await this.gitService.createBranch(newName.trim(), msg.targetHash);
+              vscode.window.showInformationMessage(`成功创建并检出分支: ${newName.trim()}`);
+              await this.refreshData();
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`创建分支失败: ${err.message}`);
+            }
+          }
+          break;
+        }
+
+        case 'promptRenameBranch': {
+          const newName = await vscode.window.showInputBox({
+            title: `重命名分支 '${msg.branchName}'`,
+            prompt: '请输入新的分支名称',
+            value: msg.branchName,
+            validateInput: (value) => {
+              if (!value || !value.trim()) return '分支名称不能为空';
+              if (/\s/.test(value)) return '分支名称不能包含空格';
+              if (value.trim() === msg.branchName) return '新分支名称与原名称相同';
+              return null;
+            },
+          });
+          if (newName && newName.trim()) {
+            try {
+              await this.gitService.renameBranch(msg.branchName, newName.trim());
+              vscode.window.showInformationMessage(`分支已重命名为: ${newName.trim()}`);
+              await this.refreshData();
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`重命名分支失败: ${err.message}`);
+            }
+          }
+          break;
+        }
 
         case 'deleteBranch':
           await this.gitService.deleteBranch(msg.branchName, msg.isRemote, msg.force);
@@ -139,6 +196,67 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
             vscode.window.showErrorMessage(`推送失败: ${err.message}`);
           }
           await this.refreshData();
+          break;
+
+        case 'updateBranch':
+          try {
+            const out = await this.gitService.update();
+            vscode.window.showInformationMessage(`更新分支成功: ${out.trim() || 'Already up to date.'}`);
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`更新分支失败: ${err.message}`);
+          }
+          await this.refreshData();
+          break;
+
+        case 'compareBranchWithHead': {
+          try {
+            const currentHead = await this.gitService.getCurrentBranch();
+            const files = await this.gitService.getBranchDiffFiles(currentHead, msg.branchName);
+            this.postMessage({
+              type: 'compareResult',
+              detail: {
+                compareType: 'branch',
+                baseBranch: currentHead,
+                targetBranch: msg.branchName,
+                files,
+              },
+            });
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`对比分支失败: ${err.message}`);
+          }
+          break;
+        }
+
+        case 'compareWithWorkingTree': {
+          try {
+            const files = await this.gitService.getWorkingTreeDiffFiles(msg.branchName);
+            this.postMessage({
+              type: 'compareResult',
+              detail: {
+                compareType: 'workingTree',
+                baseBranch: msg.branchName,
+                files,
+              },
+            });
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`比对工作区差异失败: ${err.message}`);
+          }
+          break;
+        }
+
+        case 'openCompareDiff':
+          await this._openCompareDiff(
+            msg.compareType,
+            msg.baseBranch,
+            msg.targetBranch,
+            msg.filePath,
+            msg.oldPath,
+            msg.status
+          );
+          break;
+
+        case 'exitCompare':
+          this.postMessage({ type: 'clearCompare' });
           break;
 
         case 'cherryPickCommit':
@@ -299,6 +417,70 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
         preview: true,
         preserveFocus: false,
       });
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`无法打开差异对比: ${err.message}`);
+    }
+  }
+
+  private async _openCompareDiff(
+    compareType: 'branch' | 'workingTree',
+    baseBranch: string,
+    targetBranch: string | undefined,
+    filePath: string,
+    oldPath: string | undefined,
+    status: GitFileStatus
+  ) {
+    try {
+      const activeRepoPath = this.gitService.getActiveRepoPath();
+      if (!activeRepoPath) return;
+
+      let leftUri: vscode.Uri;
+      let rightUri: vscode.Uri;
+      const fileName = path.basename(filePath);
+      const leftFilePath = oldPath || filePath;
+
+      if (compareType === 'branch') {
+        const rightRef = targetBranch || 'HEAD';
+        const leftRef = baseBranch;
+
+        if (status === 'A') {
+          leftUri = GitContentProvider.createUri('empty', filePath);
+          rightUri = GitContentProvider.createUri(rightRef, filePath);
+        } else if (status === 'D') {
+          leftUri = GitContentProvider.createUri(leftRef, leftFilePath);
+          rightUri = GitContentProvider.createUri('empty', filePath);
+        } else {
+          leftUri = GitContentProvider.createUri(leftRef, leftFilePath);
+          rightUri = GitContentProvider.createUri(rightRef, filePath);
+        }
+
+        const title = `${fileName} (${leftRef} ↔ ${rightRef})`;
+        await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title, {
+          preview: true,
+          preserveFocus: false,
+        });
+      } else {
+        // workingTree
+        const branchRef = baseBranch;
+        const diskFileUri = vscode.Uri.file(path.join(activeRepoPath, filePath));
+
+        if (status === 'A') {
+          leftUri = GitContentProvider.createUri('empty', filePath);
+          rightUri = diskFileUri;
+        } else if (status === 'D') {
+          leftUri = GitContentProvider.createUri(branchRef, leftFilePath);
+          rightUri = GitContentProvider.createUri('empty', filePath);
+        } else {
+          leftUri = GitContentProvider.createUri(branchRef, leftFilePath);
+          rightUri = diskFileUri;
+        }
+
+        const title = `${fileName} (${branchRef} ↔ Working Tree)`;
+        await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title, {
+          preview: true,
+          preserveFocus: false,
+        });
+      }
     } catch (err: any) {
       vscode.window.showErrorMessage(`无法打开差异对比: ${err.message}`);
     }

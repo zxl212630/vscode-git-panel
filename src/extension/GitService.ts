@@ -33,12 +33,17 @@ export class GitService {
         const branch = await this.getCurrentBranch(cwd);
         const singleRepo: RepoInfo = {
           name: path.basename(cwd),
+          displayName: path.basename(cwd),
           path: cwd,
           currentBranch: branch,
+          depth: 0,
+          isSubmodule: false,
         };
-        this.repoList = [singleRepo];
+        const repos = [singleRepo];
+        await this.scanSubmodules(cwd, repos);
+        this.repoList = repos;
         this.activeRepoPath = cwd;
-        return [singleRepo];
+        return repos;
       }
       this.repoList = [];
       this.activeRepoPath = null;
@@ -53,9 +58,13 @@ export class GitService {
         const branch = await this.getCurrentBranch(folderPath);
         repos.push({
           name: folder.name,
+          displayName: folder.name,
           path: folderPath,
           currentBranch: branch,
+          depth: 0,
+          isSubmodule: false,
         });
+        await this.scanSubmodules(folderPath, repos);
       } else {
         // 查找一级子目录是否有 git 仓库（monorepo 场景）
         try {
@@ -67,9 +76,13 @@ export class GitService {
                 const branch = await this.getCurrentBranch(subPath);
                 repos.push({
                   name: `${folder.name}/${entry.name}`,
+                  displayName: `${folder.name}/${entry.name}`,
                   path: subPath,
                   currentBranch: branch,
+                  depth: 0,
+                  isSubmodule: false,
                 });
+                await this.scanSubmodules(subPath, repos);
               }
             }
           }
@@ -85,6 +98,49 @@ export class GitService {
     }
 
     return repos;
+  }
+
+  private async scanSubmodules(rootRepoPath: string, repos: RepoInfo[]) {
+    try {
+      const output = await this.exec(['submodule', 'status', '--recursive'], rootRepoPath);
+      const lines = output.trim().split('\n').filter(Boolean);
+      const subPaths: string[] = [];
+
+      for (const line of lines) {
+        const match = line.trim().match(/^[+-U]?([0-9a-fA-F]{40})\s+(.+?)(?:\s+\(.*\))?$/);
+        if (match) {
+          subPaths.push(match[2].trim());
+        }
+      }
+
+      for (const subRelPath of subPaths) {
+        const subFullPath = path.join(rootRepoPath, subRelPath);
+        if (this.isGitRepo(subFullPath)) {
+          // 计算嵌套层级
+          let depth = 1;
+          for (const other of subPaths) {
+            if (subRelPath !== other && subRelPath.startsWith(other + '/')) {
+              depth++;
+            }
+          }
+          const baseName = path.basename(subRelPath);
+          const indent = '  '.repeat(depth);
+          const branch = await this.getCurrentBranch(subFullPath);
+
+          repos.push({
+            name: baseName,
+            displayName: `${indent}${baseName} (${subRelPath})`,
+            depth,
+            subRelPath,
+            path: subFullPath,
+            currentBranch: branch,
+            isSubmodule: true,
+          });
+        }
+      }
+    } catch {
+      // 忽略无子模块或命令失败的情况
+    }
   }
 
   private isGitRepo(dirPath: string): boolean {
@@ -117,7 +173,16 @@ export class GitService {
   public async getCurrentBranch(cwd?: string): Promise<string> {
     try {
       const branch = await this.exec(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
-      return branch.trim();
+      const trimmed = branch.trim();
+      if (trimmed === 'HEAD') {
+        try {
+          const shortHash = await this.exec(['rev-parse', '--short', 'HEAD'], cwd);
+          return `HEAD (${shortHash.trim()})`;
+        } catch {
+          return 'HEAD';
+        }
+      }
+      return trimmed;
     } catch {
       return '';
     }
@@ -251,7 +316,24 @@ export class GitService {
     const diffArgs = ['diff-tree', '--no-commit-id', '--name-status', '-r', '-M', baseCommit, commitHash];
 
     const filesOut = await this.exec(diffArgs);
-    const fileLines = filesOut.trim().split('\n').filter(Boolean);
+    const files = this.parseDiffNameStatus(filesOut);
+
+    return {
+      hash,
+      shortHash: hash.substring(0, 7),
+      parents,
+      authorName,
+      authorEmail,
+      timestamp,
+      subject,
+      refs,
+      body,
+      files,
+    };
+  }
+
+  public parseDiffNameStatus(output: string): GitChangedFile[] {
+    const fileLines = output.trim().split('\n').filter(Boolean);
     const files: GitChangedFile[] = [];
 
     for (const fl of fileLines) {
@@ -275,21 +357,20 @@ export class GitService {
       }
     }
 
-    return {
-      hash,
-      shortHash: hash.substring(0, 7),
-      parents,
-      authorName,
-      authorEmail,
-      timestamp,
-      subject,
-      refs,
-      body,
-      files,
-    };
+    return files;
   }
 
-  // 读取指定 commit 的文件内容（供 Diff 使用）
+  public async getBranchDiffFiles(baseBranch: string, targetBranch: string): Promise<GitChangedFile[]> {
+    const output = await this.exec(['diff', '--name-status', '-M', baseBranch, targetBranch]);
+    return this.parseDiffNameStatus(output);
+  }
+
+  public async getWorkingTreeDiffFiles(branchName: string): Promise<GitChangedFile[]> {
+    const output = await this.exec(['diff', '--name-status', '-M', branchName]);
+    return this.parseDiffNameStatus(output);
+  }
+
+  // 读取指定 commit 或 ref 的文件内容（供 Diff 使用）
   public async getFileContentAtCommit(commitHash: string, filePath: string): Promise<string> {
     if (!this.activeRepoPath) return '';
     try {
@@ -310,8 +391,21 @@ export class GitService {
     }
   }
 
+  public async checkoutAndRebase(branchName: string, ontoBranch: string): Promise<string> {
+    await this.checkout(branchName);
+    return await this.rebase(ontoBranch);
+  }
+
   public async createBranch(branchName: string, targetHash: string): Promise<void> {
     await this.exec(['checkout', '-b', branchName, targetHash]);
+  }
+
+  public async renameBranch(oldName: string, newName: string): Promise<string> {
+    return await this.exec(['branch', '-m', oldName, newName]);
+  }
+
+  public async update(): Promise<string> {
+    return await this.exec(['pull']);
   }
 
   public async deleteBranch(branchName: string, isRemote: boolean = false, force: boolean = false): Promise<void> {
