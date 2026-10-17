@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { GitBranch, GitCommit, GraphNode, RepoOperationState } from '../../common/types';
+import type { GitBranch, GitCommit, GraphNode, RepoOperationState, DateRangeFilter } from '../../common/types';
 import { computeGraphLayout } from '../utils/graphLayout';
 import { vscode } from '../utils/vscode';
 import { ContextMenu, MenuItem } from './ContextMenu';
@@ -23,6 +23,7 @@ interface GraphPanelProps {
   searchFilter: string;
   isRegex: boolean;
   isCaseSensitive: boolean;
+  dateFilter?: DateRangeFilter;
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
@@ -42,6 +43,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   searchFilter,
   isRegex,
   isCaseSensitive,
+  dateFilter,
   onLoadMore,
   hasMore,
   isLoadingMore,
@@ -54,6 +56,26 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   // 多选提交（Shift 范围选、Cmd/Ctrl 点选）；selectedHash 作为"主选中项"驱动右侧详情
   const [selectedHashes, setSelectedHashes] = useState<string[]>([]);
   const lastClickedHashRef = useRef<string | null>(null);
+
+  // 列宽度可拖拽调整状态
+  const [userGraphWidth, setUserGraphWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('git_panel_col_graph_width');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [authorWidth, setAuthorWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('git_panel_col_author_width');
+    return saved ? parseInt(saved, 10) : 130;
+  });
+  const [dateWidth, setDateWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('git_panel_col_date_width');
+    return saved ? parseInt(saved, 10) : 135;
+  });
+
+  const resizeStateRef = useRef<{
+    type: 'graph' | 'author' | 'date';
+    startX: number;
+    startWidth: number;
+  } | null>(null);
 
   // 1. 过滤 commits（分支筛选采用图的可达性算法，展示该分支全部祖先历史）
   const filteredCommits = useMemo(() => {
@@ -133,8 +155,16 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
       });
     }
 
+    if (dateFilter && (dateFilter.since || dateFilter.until)) {
+      list = list.filter((c) => {
+        if (dateFilter.since && c.timestamp < dateFilter.since) return false;
+        if (dateFilter.until && c.timestamp > dateFilter.until) return false;
+        return true;
+      });
+    }
+
     return list;
-  }, [commits, filteredBranch, filteredAuthor, searchFilter, isRegex, isCaseSensitive]);
+  }, [commits, filteredBranch, filteredAuthor, searchFilter, isRegex, isCaseSensitive, dateFilter]);
 
   // 2. 计算图谱节点拓扑
   const graphNodes = useMemo(() => {
@@ -155,6 +185,58 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
   }, [graphNodes]);
 
   const svgWidth = Math.max(28, maxLanes * LANE_WIDTH + 14);
+  const actualGraphWidth = Math.max(svgWidth, userGraphWidth || 0);
+
+  const handleStartResize = (type: 'graph' | 'author' | 'date', e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    let startWidth = actualGraphWidth;
+    if (type === 'author') startWidth = authorWidth;
+    if (type === 'date') startWidth = dateWidth;
+
+    resizeStateRef.current = {
+      type,
+      startX: e.clientX,
+      startWidth,
+    };
+    document.body.style.cursor = 'col-resize';
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeStateRef.current) return;
+      const { type, startX, startWidth } = resizeStateRef.current;
+      const delta = e.clientX - startX;
+
+      if (type === 'graph') {
+        const next = Math.max(svgWidth, startWidth + delta);
+        setUserGraphWidth(next);
+        localStorage.setItem('git_panel_col_graph_width', next.toString());
+      } else if (type === 'author') {
+        const next = Math.max(60, startWidth - delta);
+        setAuthorWidth(next);
+        localStorage.setItem('git_panel_col_author_width', next.toString());
+      } else if (type === 'date') {
+        const next = Math.max(80, startWidth - delta);
+        setDateWidth(next);
+        localStorage.setItem('git_panel_col_date_width', next.toString());
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (resizeStateRef.current) {
+        resizeStateRef.current = null;
+        document.body.style.cursor = 'default';
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [svgWidth]);
 
   // 3. 监听容器高度与滚动
   useEffect(() => {
@@ -430,12 +512,34 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
     <div className="flex flex-col h-full bg-vscode-bg select-none text-gp overflow-hidden">
       {/* 表格头 */}
       <div className="flex items-center h-[26px] bg-vscode-sideBg border-b border-vscode-border font-semibold text-gray-400 px-2 flex-shrink-0 text-gp-sm">
-        <div style={{ width: svgWidth }} className="flex-shrink-0">
-          Graph
+        <div style={{ width: actualGraphWidth }} className="flex-shrink-0 relative group flex items-center justify-between pr-1">
+          <span>Graph</span>
+          {/* Graph 列右侧调整手柄 */}
+          <div
+            className="absolute right-0 top-0 bottom-0 w-[4px] cursor-col-resize hover:bg-vscode-buttonBg transition-colors z-10"
+            title="拖拽调整 Graph 列宽"
+            onMouseDown={(e) => handleStartResize('graph', e)}
+          />
         </div>
-        <div className="flex-1 min-w-0 px-2">Description</div>
-        <div className="w-[130px] flex-shrink-0 px-2">Author</div>
-        <div className="w-[135px] flex-shrink-0 px-2 text-right">Date</div>
+        <div className="flex-1 min-w-[100px] px-2 truncate">Description</div>
+        <div style={{ width: authorWidth }} className="flex-shrink-0 px-2 relative truncate group">
+          {/* Author 列左侧调整手柄 */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-[4px] cursor-col-resize hover:bg-vscode-buttonBg transition-colors z-10"
+            title="拖拽调整 Author 列宽"
+            onMouseDown={(e) => handleStartResize('author', e)}
+          />
+          Author
+        </div>
+        <div style={{ width: dateWidth }} className="flex-shrink-0 px-2 text-right relative truncate group">
+          {/* Date 列左侧调整手柄 */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-[4px] cursor-col-resize hover:bg-vscode-buttonBg transition-colors z-10"
+            title="拖拽调整 Date 列宽"
+            onMouseDown={(e) => handleStartResize('date', e)}
+          />
+          Date
+        </div>
       </div>
 
       {/* 虚拟滚动列表区 */}
@@ -459,9 +563,9 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
               onContextMenu={(e) => handleRowContextMenu(e, commit)}
             >
               {/* SVG 拓扑图谱列 */}
-              <div style={{ width: svgWidth, height: ROW_HEIGHT }} className="flex-shrink-0 relative">
+              <div style={{ width: actualGraphWidth, height: ROW_HEIGHT }} className="flex-shrink-0 relative">
                 <svg
-                  width={svgWidth}
+                  width={actualGraphWidth}
                   height={ROW_HEIGHT}
                   className="overflow-visible pointer-events-none block"
                 >
@@ -567,7 +671,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
               </div>
 
               {/* Commit 提交描述与分支胶囊标签 */}
-              <div className="flex-1 min-w-0 px-2 flex items-center gap-1.5 overflow-hidden">
+              <div className="flex-1 min-w-[100px] px-2 flex items-center gap-1.5 overflow-hidden">
                 {/* 分支与 Tag 胶囊 */}
                 {commit.refs.map((ref, idx) => {
                   const isHead = ref.includes('HEAD');
@@ -593,12 +697,12 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
               </div>
 
               {/* 作者 */}
-              <div className="w-[130px] flex-shrink-0 px-2 truncate opacity-80 font-mono text-gp-sm">
+              <div style={{ width: authorWidth }} className="flex-shrink-0 px-2 truncate opacity-80 font-mono text-gp-sm">
                 {commit.authorName}
               </div>
 
               {/* 日期 */}
-              <div className="w-[135px] flex-shrink-0 px-2 text-right opacity-60 font-mono text-gp-sm">
+              <div style={{ width: dateWidth }} className="flex-shrink-0 px-2 text-right opacity-60 font-mono text-gp-sm">
                 {formatDate(commit.timestamp)}
               </div>
             </div>
@@ -616,7 +720,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
 
         {!hasMore && totalCount > 0 && (
           <div className="py-2 text-center text-gp-sm text-gray-500 italic select-none">
-            已到达提交历史起点 (共 {totalCount} 条)
+            已到达提交历史起点
           </div>
         )}
 

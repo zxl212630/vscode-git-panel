@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { GitBranch, GitCommit, GitCommitDetail, RepoInfo, ExtensionMessage, CompareDetail, RepoOperationState } from '../common/types';
+import { GitBranch, GitCommit, GitCommitDetail, RepoInfo, ExtensionMessage, CompareDetail, RepoOperationState, DateRangeFilter } from '../common/types';
 import { vscode } from './utils/vscode';
 import { SplitPane } from './components/SplitPane';
 import { BranchPanel } from './components/BranchPanel';
@@ -42,6 +42,7 @@ export const App: React.FC = () => {
   const [isCaseSensitive, setIsCaseSensitive] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateRangeFilter>({ preset: 'all' });
 
   // 所有作者列表（去重）
   const authors = useMemo(() => {
@@ -214,13 +215,6 @@ export const App: React.FC = () => {
     });
   }, [isLoading, isLoadingMore, hasMore, commits.length, toolbarBranchFilter]);
 
-  const handleJumpToHead = useCallback(() => {
-    const headCommit = commits.find((c) => c.refs.some((r) => r.includes('HEAD')));
-    if (headCommit) {
-      handleSelectCommit(headCommit);
-    }
-  }, [commits, handleSelectCommit]);
-
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-vscode-bg text-vscode-fg relative">
       {/* 顶部轻量加载指示条（绝对定位，绝不改变布局高度，杜绝抖动） */}
@@ -248,6 +242,9 @@ export const App: React.FC = () => {
       {/* 主三栏分栏 */}
       <div className="flex-1 overflow-hidden relative">
         <SplitPane
+          minLeftWidth={140}
+          minRightWidth={180}
+          minCenterWidth={200}
           left={
             <BranchPanel
               repos={repos}
@@ -274,10 +271,9 @@ export const App: React.FC = () => {
                 authors={authors}
                 selectedAuthor={selectedAuthor}
                 onSelectAuthor={setSelectedAuthor}
+                dateFilter={dateFilter}
+                onDateFilterChange={setDateFilter}
                 onRefresh={handleRefresh}
-                onJumpToHead={handleJumpToHead}
-                commitCount={commits.length}
-                hasMore={hasMore}
                 isLoadingMore={isLoadingMore}
               />
               <div className="flex-1 min-h-0">
@@ -291,6 +287,7 @@ export const App: React.FC = () => {
                   searchFilter={searchFilter}
                   isRegex={isRegex}
                   isCaseSensitive={isCaseSensitive}
+                  dateFilter={dateFilter}
                   onLoadMore={handleLoadMore}
                   hasMore={hasMore}
                   isLoadingMore={isLoadingMore}

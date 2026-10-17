@@ -8,6 +8,7 @@ interface SplitPaneProps {
   defaultRightWidth?: number;
   minLeftWidth?: number;
   minRightWidth?: number;
+  minCenterWidth?: number;
 }
 
 export const SplitPane: React.FC<SplitPaneProps> = ({
@@ -18,6 +19,7 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
   defaultRightWidth = 320,
   minLeftWidth = 140,
   minRightWidth = 180,
+  minCenterWidth = 200,
 }) => {
   const [leftWidth, setLeftWidth] = useState<number>(() => {
     const saved = localStorage.getItem('git_panel_left_width');
@@ -35,11 +37,13 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDraggingLeft.current) {
-        const newWidth = Math.max(minLeftWidth, Math.min(e.clientX, 500));
+        const maxLeftWidth = Math.max(minLeftWidth, window.innerWidth - rightWidth - minCenterWidth);
+        const newWidth = Math.max(minLeftWidth, Math.min(e.clientX, maxLeftWidth));
         setLeftWidth(newWidth);
         localStorage.setItem('git_panel_left_width', newWidth.toString());
       } else if (isDraggingRight.current) {
-        const newWidth = Math.max(minRightWidth, Math.min(window.innerWidth - e.clientX, 750));
+        const maxRightWidth = Math.max(minRightWidth, window.innerWidth - leftWidth - minCenterWidth);
+        const newWidth = Math.max(minRightWidth, Math.min(window.innerWidth - e.clientX, maxRightWidth));
         setRightWidth(newWidth);
         localStorage.setItem('git_panel_right_width', newWidth.toString());
       }
@@ -57,7 +61,7 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [minLeftWidth, minRightWidth]);
+  }, [leftWidth, rightWidth, minLeftWidth, minRightWidth, minCenterWidth]);
 
   return (
     <div className="flex h-full w-full overflow-hidden select-none bg-vscode-bg text-vscode-fg">

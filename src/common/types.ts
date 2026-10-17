@@ -23,6 +23,16 @@ export interface GitBranch {
   behind?: number;
 }
 
+export interface DateRangeFilter {
+  preset: 'all' | 'today' | '7d' | '30d' | '90d' | 'custom';
+  since?: number; // Unix timestamp in seconds
+  until?: number; // Unix timestamp in seconds
+  afterEnabled?: boolean;
+  afterDate?: string; // YYYY/MM/DD
+  beforeEnabled?: boolean;
+  beforeDate?: string; // YYYY/MM/DD
+}
+
 export type GitFileStatus = 'A' | 'M' | 'D' | 'R' | 'C' | 'U';
 
 export interface GitChangedFile {
