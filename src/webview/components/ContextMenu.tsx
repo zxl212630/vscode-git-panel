@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export interface MenuItem {
   label?: string;
@@ -19,6 +19,11 @@ interface ContextMenuProps {
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; maxHeight: number }>({
+    top: Math.max(6, Math.min(y, window.innerHeight - 200)),
+    left: Math.max(6, Math.min(x, window.innerWidth - 220)),
+    maxHeight: Math.max(80, window.innerHeight - 12),
+  });
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -41,26 +46,60 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     };
   }, [onClose]);
 
+  // 精准自适应视口定位：优先向下，放不下则向上；窗口极矮时贴顶并不超出视口，开启平滑滚动
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const menuWidth = rect.width;
+    const menuHeight = rect.height;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    // 默认向下弹
+    let top = y;
+    if (top + menuHeight > vh - 6) {
+      // 底部放不下，尝试向上弹
+      const topUp = y - menuHeight;
+      if (topUp >= 6) {
+        top = topUp;
+      } else {
+        // 上下都放不下（窗口比菜单矮），贴顶 6px 显示
+        top = 6;
+      }
+    }
+
+    // 水平方向防溢出
+    let left = x;
+    if (left + menuWidth > vw - 6) {
+      left = Math.max(6, vw - menuWidth - 6);
+    }
+    if (left < 6) {
+      left = 6;
+    }
+
+    // 最大高度限制，确保永不溢出底部可视区
+    const maxHeight = Math.max(80, vh - top - 6);
+
+    setCoords({ top, left, maxHeight });
+  }, [x, y, items]);
+
   const isNothingHere = items.length === 1 && items[0].label === 'Nothing here';
-
-  // 调整防溢出位置
-  const style: React.CSSProperties = {
-    position: 'fixed',
-    top: Math.min(y, window.innerHeight - (items.length * 28 + 20)),
-    left: Math.min(x, window.innerWidth - (isNothingHere ? 120 : 240)),
-    zIndex: 9999,
-  };
-
   const hasAnyIcon = items.some((item) => !item.isSeparator && !!item.icon);
 
   return (
     <div
       ref={menuRef}
-      style={style}
+      style={{
+        position: 'fixed',
+        top: coords.top,
+        left: coords.left,
+        maxHeight: coords.maxHeight,
+        zIndex: 9999,
+      }}
       className={
         isNothingHere
           ? 'px-4 py-1.5 rounded-lg bg-[#2b2d30] border border-[#393b40] shadow-2xl text-gp text-gray-200 font-medium select-none text-center min-w-[90px]'
-          : 'min-w-[200px] bg-vscode-sideBg border border-vscode-border rounded shadow-xl py-1 text-gp select-none'
+          : 'min-w-[200px] max-w-[320px] overflow-y-auto bg-vscode-sideBg border border-vscode-border rounded shadow-xl py-1 text-gp select-none'
       }
     >
       {isNothingHere ? (
