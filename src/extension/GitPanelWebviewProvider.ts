@@ -255,18 +255,20 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
           }
           break;
 
-        case 'updateBranch':
-          this.postMessage({ type: 'loading', isLoading: true, message: '正在更新分支 (git pull)...' });
+        case 'updateBranch': {
+          const targetBranch = msg.branchName;
+          const displayTitle = targetBranch ? `正在更新分支 '${targetBranch}'...` : '正在更新分支 (git pull)...';
+          this.postMessage({ type: 'loading', isLoading: true, message: displayTitle });
           try {
             let out = '';
             await vscode.window.withProgress(
               {
                 location: vscode.ProgressLocation.Notification,
-                title: 'Git Panel: 正在更新分支 (git pull)...',
+                title: `Git Panel: ${displayTitle}`,
                 cancellable: false,
               },
               async () => {
-                out = await this.gitService.update();
+                out = await this.gitService.update(targetBranch);
               }
             );
             vscode.window.showInformationMessage(`更新分支成功: ${out.trim() || 'Already up to date.'}`);
@@ -276,6 +278,7 @@ export class GitPanelWebviewProvider implements vscode.WebviewViewProvider {
             await this.refreshData();
           }
           break;
+        }
 
         case 'compareBranchWithHead': {
           try {

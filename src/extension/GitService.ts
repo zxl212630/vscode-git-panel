@@ -421,8 +421,47 @@ export class GitService {
     return await this.exec(['branch', '-m', oldName, newName]);
   }
 
-  public async update(): Promise<string> {
-    return await this.exec(['pull']);
+  public async update(branchName?: string): Promise<string> {
+    const currentHead = await this.getCurrentBranch();
+    // 1. 如果未指定分支，或指定的是当前 HEAD 分支，直接执行 pull
+    if (!branchName || branchName === currentHead) {
+      return await this.exec(['pull']);
+    }
+
+    // 2. 更新非当前分支：通过 git fetch <remote> <remoteBranch>:<branchName> 实现无切换快进更新
+    let remote = 'origin';
+    let remoteBranch = branchName;
+
+    // 尝试读取该分支绑定的 remote 配置
+    try {
+      const cfgRemote = (await this.exec(['config', `branch.${branchName}.remote`])).trim();
+      if (cfgRemote) remote = cfgRemote;
+    } catch {
+      // 保持默认 remote
+    }
+
+    // 尝试读取该分支绑定的 upstream 分支名
+    try {
+      const cfgMerge = (await this.exec(['config', `branch.${branchName}.merge`])).trim();
+      if (cfgMerge) {
+        remoteBranch = cfgMerge.replace(/^refs\/heads\//, '');
+      }
+    } catch {
+      // 保持默认 remoteBranch
+    }
+
+    try {
+      const result = await this.exec(['fetch', remote, `${remoteBranch}:${branchName}`]);
+      return result.trim() || 'Already up to date.';
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      if (/non-fast-forward|rejected/i.test(errMsg)) {
+        throw new Error(
+          `分支 '${branchName}' 与远端存在分叉（包含未推送的本地提交），无法直接快进更新。请检出该分支手动处理。`
+        );
+      }
+      throw err;
+    }
   }
 
   public async deleteBranch(branchName: string, isRemote: boolean = false, force: boolean = false): Promise<void> {

@@ -95,7 +95,7 @@ export type WebviewMessage =
   | { type: 'mergeBranch'; branchName: string }
   | { type: 'rebaseBranch'; branchName: string }
   | { type: 'pushBranch'; branchName: string; remote?: string }
-  | { type: 'updateBranch' }
+  | { type: 'updateBranch'; branchName?: string }
   | { type: 'cherryPickCommit'; commitHash: string }
   | { type: 'resetCommit'; commitHash: string; mode: 'soft' | 'mixed' | 'hard' }
   | { type: 'promptResetCommit'; commitHash: string }

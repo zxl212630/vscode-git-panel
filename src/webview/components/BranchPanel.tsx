@@ -287,7 +287,7 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
           disabled: !!operatingBranch || isLoading,
           onClick: () => {
             setOperatingBranch({ name: branch.name, action: 'update' });
-            vscode.postMessage({ type: 'updateBranch' });
+            vscode.postMessage({ type: 'updateBranch', branchName: branch.name });
           },
         },
         {
@@ -387,8 +387,15 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
       },
       { isSeparator: true },
       {
-        label: 'Update',
-        disabled: true,
+        label: operatingBranch?.name === branch.name && operatingBranch.action === 'update' ? 'Updating...' : 'Update',
+        disabled: !!operatingBranch || isLoading,
+        onClick: () => {
+          setOperatingBranch({ name: branch.name, action: 'update' });
+          vscode.postMessage({
+            type: 'updateBranch',
+            branchName: branch.name,
+          });
+        },
       },
       {
         label: operatingBranch?.name === branch.name && operatingBranch.action === 'push' ? 'Pushing...' : 'Push...',
