@@ -350,7 +350,7 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
       {/* 分割条：拖动调整底部详情区域高度 */}
       {!compareDetail && commitDetail && (
         <div
-          className="h-[3px] hover:h-[4px] bg-vscode-border hover:bg-vscode-buttonBg cursor-row-resize flex-shrink-0 transition-colors"
+          className="h-[3px] bg-vscode-border hover:bg-vscode-buttonBg cursor-row-resize flex-shrink-0 transition-colors"
           onMouseDown={(e) => {
             e.preventDefault();
             isDraggingDivider.current = true;

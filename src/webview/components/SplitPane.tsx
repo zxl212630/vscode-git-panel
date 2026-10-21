@@ -72,7 +72,7 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
 
       {/* 左侧分栏拖拽条 */}
       <div
-        className="w-[3px] hover:w-[4px] bg-vscode-border hover:bg-vscode-buttonBg cursor-col-resize flex-shrink-0 transition-colors z-10"
+        className="w-[3px] bg-vscode-border hover:bg-vscode-buttonBg cursor-col-resize flex-shrink-0 transition-colors z-10"
         onMouseDown={(e) => {
           e.preventDefault();
           isDraggingLeft.current = true;
@@ -87,7 +87,7 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
 
       {/* 右侧分栏拖拽条 */}
       <div
-        className="w-[3px] hover:w-[4px] bg-vscode-border hover:bg-vscode-buttonBg cursor-col-resize flex-shrink-0 transition-colors z-10"
+        className="w-[3px] bg-vscode-border hover:bg-vscode-buttonBg cursor-col-resize flex-shrink-0 transition-colors z-10"
         onMouseDown={(e) => {
           e.preventDefault();
           isDraggingRight.current = true;
