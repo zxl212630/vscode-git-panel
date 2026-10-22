@@ -252,7 +252,6 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
         { isSeparator: true },
         {
           label: 'Delete',
-          danger: true,
           onClick: () => {
             vscode.postMessage({
               type: 'deleteBranch',
@@ -421,7 +420,6 @@ export const BranchPanel: React.FC<BranchPanelProps> = ({
       },
       {
         label: 'Delete',
-        danger: true,
         onClick: () => {
           vscode.postMessage({
             type: 'deleteBranch',

@@ -9,6 +9,8 @@ import {
   Network,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   GitCompare,
   User,
   Clock,
@@ -161,6 +163,34 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
     }));
   };
 
+  // 当前树中所有目录的路径（用于全部展开/折叠）
+  const allDirPaths = useMemo(() => {
+    const paths: string[] = [];
+    const walk = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        if (node.isDirectory) {
+          paths.push(node.fullPath);
+          walk(node.children || []);
+        }
+      }
+    };
+    walk(fileTree);
+    return paths;
+  }, [fileTree]);
+
+  const allDirsCollapsed =
+    allDirPaths.length > 0 && allDirPaths.every((path) => collapsedDirs[path]);
+
+  const toggleCollapseAll = () => {
+    if (allDirsCollapsed) {
+      setCollapsedDirs({});
+    } else {
+      const next: Record<string, boolean> = {};
+      for (const path of allDirPaths) next[path] = true;
+      setCollapsedDirs(next);
+    }
+  };
+
   const handleOpenFileDiff = (file: GitChangedFile) => {
     if (compareDetail) {
       vscode.postMessage({
@@ -298,22 +328,33 @@ export const DiffPanel: React.FC<DiffPanelProps> = ({
         </span>
         <div className="flex items-center gap-1">
           <button
-            className={`p-1 rounded hover:bg-vscode-hoverBg ${
-              viewMode === 'tree' ? 'text-vscode-activeFg bg-vscode-activeBg' : 'opacity-60'
+            className={`p-1 rounded ${
+              viewMode === 'tree'
+                ? 'hover:bg-vscode-hoverBg'
+                : 'opacity-40 cursor-default'
             }`}
-            onClick={() => setViewMode('tree')}
-            title="树形结构显示"
+            disabled={viewMode === 'flat'}
+            onClick={toggleCollapseAll}
+            title={allDirsCollapsed ? '全部展开' : '全部折叠'}
           >
-            <Network className="w-3.5 h-3.5" />
+            {allDirsCollapsed ? (
+              <ChevronsUpDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronsDownUp className="w-3.5 h-3.5" />
+            )}
           </button>
           <button
             className={`p-1 rounded hover:bg-vscode-hoverBg ${
-              viewMode === 'flat' ? 'text-vscode-activeFg bg-vscode-activeBg' : 'opacity-60'
+              viewMode === 'tree' ? 'text-vscode-activeFg bg-vscode-activeBg' : ''
             }`}
-            onClick={() => setViewMode('flat')}
-            title="平铺列表显示"
+            onClick={() => setViewMode(viewMode === 'tree' ? 'flat' : 'tree')}
+            title={viewMode === 'tree' ? '切换为平铺列表' : '切换为树形结构'}
           >
-            <List className="w-3.5 h-3.5" />
+            {viewMode === 'tree' ? (
+              <Network className="w-3.5 h-3.5" />
+            ) : (
+              <List className="w-3.5 h-3.5" />
+            )}
           </button>
         </div>
       </div>

@@ -418,7 +418,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
       // 3. Cherry-Pick
       {
         label: 'Cherry-Pick',
-        icon: <Cherry className="w-3.5 h-3.5 text-red-400" />,
+        icon: <Cherry className="w-3.5 h-3.5 opacity-80" />,
         onClick: () => {
           vscode.postMessage({
             type: 'cherryPickCommit',
@@ -443,7 +443,7 @@ export const GraphPanel: React.FC<GraphPanelProps> = ({
       // 5. Reset & Revert & Undo & Edit Message
       {
         label: 'Reset Current Branch to Here...',
-        icon: <RotateCcw className="w-3.5 h-3.5 text-amber-400" />,
+        icon: <RotateCcw className="w-3.5 h-3.5 opacity-80" />,
         onClick: () => {
           vscode.postMessage({
             type: 'promptResetCommit',

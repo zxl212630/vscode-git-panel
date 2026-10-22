@@ -6,7 +6,6 @@ export interface MenuItem {
   shortcut?: string;
   isSeparator?: boolean;
   disabled?: boolean;
-  danger?: boolean;
   onClick?: () => void;
 }
 
@@ -17,6 +16,18 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
+// 与 VS Code 原生菜单（含源代码管理面板右键菜单）保持一致的主题变量与尺寸
+const MENU_STYLE: React.CSSProperties = {
+  backgroundColor: 'var(--vscode-menu-background, #252526)',
+  color: 'var(--vscode-menu-foreground, #cccccc)',
+  border: '1px solid var(--vscode-menu-border, #454545)',
+  boxShadow: 'var(--vscode-menu-shadow, 0 0 8px 2px rgba(0, 0, 0, 0.36))',
+  borderRadius: 'var(--vscode-cornerRadius-large, 5px)',
+  fontFamily: 'var(--vscode-font-family)',
+  fontSize: 'var(--vscode-font-size, 13px)',
+  fontWeight: 400,
+};
+
 export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number; maxHeight: number }>({
@@ -25,8 +36,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     maxHeight: Math.max(80, window.innerHeight - 12),
   });
 
+  // 隐藏机制与 VS Code 原生菜单一致：点击菜单外部、按 Esc、窗口失焦时关闭
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleMouseDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -38,11 +50,17 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    const handleBlur = () => {
+      onClose();
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
     document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('blur', handleBlur);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('blur', handleBlur);
     };
   }, [onClose]);
 
@@ -83,65 +101,62 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     setCoords({ top, left, maxHeight });
   }, [x, y, items]);
 
-  const isNothingHere = items.length === 1 && items[0].label === 'Nothing here';
   const hasAnyIcon = items.some((item) => !item.isSeparator && !!item.icon);
 
   return (
     <div
       ref={menuRef}
+      role="menu"
       style={{
+        ...MENU_STYLE,
         position: 'fixed',
         top: coords.top,
         left: coords.left,
         maxHeight: coords.maxHeight,
         zIndex: 9999,
       }}
-      className={
-        isNothingHere
-          ? 'px-4 py-1.5 rounded-lg bg-[#2b2d30] border border-[#393b40] shadow-2xl text-gp text-gray-200 font-medium select-none text-center min-w-[90px]'
-          : 'min-w-[200px] max-w-[320px] overflow-y-auto bg-vscode-sideBg border border-vscode-border rounded shadow-xl py-1 text-gp select-none'
-      }
+      className="min-w-[200px] max-w-[320px] overflow-y-auto p-1 select-none"
     >
-      {isNothingHere ? (
-        <span>{items[0].label}</span>
-      ) : (
-        items.map((item, index) => {
-          if (item.isSeparator) {
-            return <div key={index} className="my-1 border-t border-vscode-border opacity-60" />;
-          }
-
+      {items.map((item, index) => {
+        if (item.isSeparator) {
           return (
             <div
               key={index}
-              className={`flex items-center px-3 py-1.5 cursor-pointer gap-2 transition-colors ${
-                item.disabled
-                  ? 'opacity-40 cursor-not-allowed'
-                  : item.danger
-                  ? 'hover:bg-red-600 hover:text-white text-red-400'
-                  : 'hover:bg-vscode-activeBg hover:text-vscode-activeFg text-vscode-fg'
-              }`}
-              onClick={() => {
-                if (!item.disabled && item.onClick) {
-                  item.onClick();
-                  onClose();
-                }
-              }}
-            >
-              {item.icon ? (
-                <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">{item.icon}</span>
-              ) : hasAnyIcon ? (
-                <span className="w-4 h-4 flex-shrink-0" />
-              ) : null}
-              <span className="flex-1 truncate">{item.label}</span>
-              {item.shortcut && (
-                <span className="text-gp-sm opacity-40 ml-4 font-mono font-normal flex-shrink-0">
-                  {item.shortcut}
-                </span>
-              )}
-            </div>
+              className="mx-2 my-1 h-px bg-[var(--vscode-menu-separatorBackground)]"
+            />
           );
-        })
-      )}
+        }
+
+        return (
+          <div
+            key={index}
+            role="menuitem"
+            aria-disabled={item.disabled}
+            style={item.disabled ? { color: 'var(--vscode-disabledForeground, #8c8c8c)' } : undefined}
+            className={`flex items-center h-6 pl-2 pr-3 gap-2 rounded-[3px] ${
+              item.disabled
+                ? 'cursor-default'
+                : 'cursor-pointer hover:bg-[var(--vscode-menu-selectionBackground)] hover:text-[var(--vscode-menu-selectionForeground)]'
+            }`}
+            onClick={() => {
+              if (!item.disabled && item.onClick) {
+                item.onClick();
+                onClose();
+              }
+            }}
+          >
+            {item.icon ? (
+              <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">{item.icon}</span>
+            ) : hasAnyIcon ? (
+              <span className="w-4 h-4 flex-shrink-0" />
+            ) : null}
+            <span className="flex-1 truncate">{item.label}</span>
+            {item.shortcut && (
+              <span className="ml-auto pl-5 flex-shrink-0 opacity-70">{item.shortcut}</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
